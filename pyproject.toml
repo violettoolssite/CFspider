@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cfspider"
+version = "1.0.0"
+description = "Cloudflare Workers 代理请求库，语法与 requests 一致"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.7"
+authors = [
+    {name = "CFspider", email = "cfspider@example.com"}
+]
+keywords = ["cloudflare", "proxy", "requests", "spider", "crawler"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests>=2.20.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/violettoolssite/CFspider"
+Repository = "https://github.com/violettoolssite/CFspider"
+Issues = "https://github.com/violettoolssite/CFspider/issues"
+
+[tool.setuptools.packages.find]
+include = ["cfspider*"]
+
