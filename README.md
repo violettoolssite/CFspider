@@ -114,6 +114,7 @@ Cloudflare Workers 免费版每日 100,000 请求，无需信用卡，无需付�
 - **支持异步请求**（基于 httpx），可使用 async/await 语法
 - **支持 HTTP/2 协议**，更快的连接复用和性能
 - **支持流式响应**，高效处理大文件下载
+- **支持 TLS 指纹模拟**（基于 curl_cffi），可模拟 Chrome/Safari/Firefox/Edge 浏览器指纹
 - 完全免费，Workers 免费版每日 100,000 请求
 
 ## 测试结果
@@ -512,6 +513,92 @@ asyncio.run(main())
 | `cfspider.apatch(url, **kwargs)` | 异步 PATCH 请求 |
 | `cfspider.astream(method, url, **kwargs)` | 流式请求（上下文管理器） |
 | `cfspider.AsyncSession(**kwargs)` | 异步会话（支持连接池） |
+
+## TLS 指纹模拟 (curl_cffi)
+
+CFspider 集成了 curl_cffi，支持模拟各种浏览器的 TLS 指纹，有效绕过基于 JA3/JA4 指纹的反爬检测。
+
+### 基本用法
+
+```python
+import cfspider
+
+# 模拟 Chrome 131 发送请求
+response = cfspider.impersonate_get(
+    "https://example.com",
+    impersonate="chrome131"
+)
+print(response.text)
+
+# 模拟 Safari 18
+response = cfspider.impersonate_get(
+    "https://example.com",
+    impersonate="safari18_0"
+)
+
+# 模拟 Firefox 133
+response = cfspider.impersonate_get(
+    "https://example.com",
+    impersonate="firefox133"
+)
+```
+
+### 配合 Workers 代理使用
+
+```python
+import cfspider
+
+# TLS 指纹 + Cloudflare IP 出口
+response = cfspider.impersonate_get(
+    "https://httpbin.org/ip",
+    impersonate="chrome131",
+    cf_proxies="https://your-workers.dev"
+)
+print(response.text)  # Cloudflare IP
+print(response.cf_colo)  # 节点代码
+```
+
+### TLS 指纹会话
+
+```python
+import cfspider
+
+# 创建 Chrome 131 指纹会话
+with cfspider.ImpersonateSession(impersonate="chrome131") as session:
+    r1 = session.get("https://example.com")
+    r2 = session.post("https://api.example.com", json={"key": "value"})
+    r3 = session.get("https://example.com/data")
+```
+
+### 支持的浏览器指纹
+
+```python
+import cfspider
+
+# 获取支持的浏览器列表
+browsers = cfspider.get_supported_browsers()
+print(browsers)
+```
+
+| 类型 | 版本 |
+|------|------|
+| Chrome | chrome99, chrome100, chrome101, chrome104, chrome107, chrome110, chrome116, chrome119, chrome120, chrome123, chrome124, chrome131 |
+| Chrome Android | chrome99_android, chrome131_android |
+| Safari | safari15_3, safari15_5, safari17_0, safari17_2_ios, safari18_0, safari18_0_ios |
+| Firefox | firefox102, firefox109, firefox133 |
+| Edge | edge99, edge101 |
+
+### TLS 指纹 API 参考
+
+| 方法 | 说明 |
+|------|------|
+| `cfspider.impersonate_get(url, impersonate="chrome131", **kwargs)` | GET 请求 |
+| `cfspider.impersonate_post(url, impersonate="chrome131", **kwargs)` | POST 请求 |
+| `cfspider.impersonate_put(url, **kwargs)` | PUT 请求 |
+| `cfspider.impersonate_delete(url, **kwargs)` | DELETE 请求 |
+| `cfspider.impersonate_request(method, url, **kwargs)` | 自定义方法请求 |
+| `cfspider.ImpersonateSession(impersonate="chrome131", **kwargs)` | 指纹会话 |
+| `cfspider.get_supported_browsers()` | 获取支持的浏览器列表 |
 
 ## 浏览器模式
 
