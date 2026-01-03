@@ -468,6 +468,15 @@ except Exception as e:
 5. 浏览器模式需要额外安装 `playwright` 和 Chromium
 6. edgetunnel VLESS 代理需要单独部署 edgetunnel Workers
 
+## 致谢
+
+本项目的浏览器 VLESS 代理功能借鉴并使用了 [edgetunnel](https://github.com/cmliu/edgetunnel) 项目。
+
+edgetunnel 是一个优秀的 Cloudflare Workers VLESS 代理实现，感谢 [@cmliu](https://github.com/cmliu) 的开源贡献。
+
+如需使用浏览器模式的 Cloudflare IP 出口功能，请先部署 edgetunnel Workers：
+- 仓库地址：https://github.com/cmliu/edgetunnel
+
 ## License
 
 MIT License
@@ -477,3 +486,4 @@ MIT License
 - GitHub: https://github.com/violettoolssite/CFspider
 - PyPI: https://pypi.org/project/cfspider/
 - 官网: https://spider.violetteam.cloud
+- edgetunnel: https://github.com/cmliu/edgetunnel
