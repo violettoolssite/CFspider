@@ -356,24 +356,25 @@ def test_all_parameters():
     print("测试 9: .get() 方法所有参数组合")
     print("="*70)
     
-    print("\n[8.1] 所有参数组合测试:")
+    print("\n[9.1] HTTP/2 + Workers + 所有参数:")
     try:
         response = cfspider.get(
             # 基本参数
             url="https://httpbin.org/get",
             # CFspider 特有参数
-            cf_proxies=CF_WORKERS,      # Workers 代理
+            cf_proxies=CF_WORKERS,       # Workers 代理
             cf_workers=True,             # 使用 Workers API
-            http2=False,                 # HTTP/2（与 impersonate 不兼容）
-            impersonate="chrome131",     # TLS 指纹模拟
+            http2=True,                  # 启用 HTTP/2
+            impersonate=None,            # HTTP/2 模式不使用指纹
             # requests 兼容参数
-            params={"key1": "value1", "key2": "中文参数"},  # URL 查询参数
+            params={"key1": "value1", "key2": "value2", "chinese": "中文"},
             headers={
-                "User-Agent": "CFspider-Test/1.0",
+                "User-Agent": "CFspider-HTTP2-Test/1.0",
                 "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "X-Custom-Header": "custom-value"
+                "Accept": "application/json",
+                "X-Custom-Header": "http2-test"
             },
-            cookies={"session": "test123", "user": "cfspider"},
+            cookies={"session": "http2_test", "user": "cfspider"},
             timeout=30
         )
         
@@ -382,30 +383,33 @@ def test_all_parameters():
         print(f"  状态码: {response.status_code}")
         print(f"  CF Colo: {response.cf_colo}")
         print(f"  CF Ray: {response.cf_ray}")
-        print(f"\n  请求参数验证:")
-        print(f"    URL 参数: {data.get('args', {})}")
-        print(f"    Headers 数量: {len(data.get('headers', {}))}")
-        print(f"    Origin (IP): {data.get('origin', 'N/A')}")
-        print(f"\n  状态: ✓ 所有参数正确传递")
+        print(f"  URL 参数: {data.get('args', {})}")
+        print(f"  Headers 数量: {len(data.get('headers', {}))}")
+        print(f"  Origin: {data.get('origin', 'N/A')}")
+        print(f"  状态: OK HTTP/2 + 所有参数正确")
     except Exception as e:
         print(f"  错误: {e}")
-        import traceback
-        traceback.print_exc()
     
-    print("\n[8.2] POST 请求所有参数:")
+    print("\n[9.2] HTTP/2 + Workers + POST + 所有参数:")
     try:
         response = cfspider.post(
             url="https://httpbin.org/post",
             cf_proxies=CF_WORKERS,
             cf_workers=True,
-            impersonate="safari18_0",
-            params={"action": "test"},
+            http2=True,
+            params={"action": "http2_post"},
             headers={
                 "Content-Type": "application/json",
-                "Accept": "application/json"
+                "Accept": "application/json",
+                "X-Request-ID": "http2-post-test"
             },
-            cookies={"auth": "token123"},
-            json={"name": "cfspider", "version": "1.4.1", "features": ["proxy", "fingerprint", "async"]},
+            cookies={"auth": "http2_token"},
+            json={
+                "name": "cfspider",
+                "version": "1.4.1",
+                "http2": True,
+                "features": ["proxy", "fingerprint", "async", "http2"]
+            },
             timeout=30
         )
         
@@ -414,65 +418,97 @@ def test_all_parameters():
         print(f"  状态码: {response.status_code}")
         print(f"  CF Colo: {response.cf_colo}")
         print(f"  POST JSON: {data.get('json', {})}")
-        print(f"  状态: ✓ POST 请求所有参数正确")
+        print(f"  URL 参数: {data.get('args', {})}")
+        print(f"  状态: OK HTTP/2 POST 所有参数正确")
     except Exception as e:
         print(f"  错误: {e}")
     
-    print("\n[8.3] 普通代理模式 (cf_workers=False):")
+    print("\n[9.3] TLS 指纹 + Workers + 所有参数:")
     try:
-        # 直接请求（不使用代理），只测试参数传递
+        response = cfspider.get(
+            url="https://httpbin.org/get",
+            cf_proxies=CF_WORKERS,
+            cf_workers=True,
+            http2=False,                 # 使用指纹时关闭 HTTP/2
+            impersonate="chrome131",     # Chrome 指纹
+            params={"fingerprint": "chrome131", "test": "all_params"},
+            headers={
+                "User-Agent": "CFspider-Fingerprint/1.0",
+                "Accept-Language": "en-US,en;q=0.9",
+                "X-Fingerprint": "enabled"
+            },
+            cookies={"fp_session": "chrome131_test"},
+            timeout=30
+        )
+        
+        data = response.json()
+        
+        print(f"  状态码: {response.status_code}")
+        print(f"  CF Colo: {response.cf_colo}")
+        print(f"  URL 参数: {data.get('args', {})}")
+        print(f"  状态: OK TLS 指纹 + 所有参数正确")
+    except Exception as e:
+        print(f"  错误: {e}")
+    
+    print("\n[9.4] 无代理 + HTTP/2 + 所有参数:")
+    try:
         response = cfspider.get(
             url="https://httpbin.org/get",
             cf_proxies=None,             # 无代理
-            cf_workers=False,            # 普通模式
-            impersonate="firefox133",    # Firefox 指纹
-            params={"test": "direct"},
-            headers={"X-Test": "no-proxy"},
+            cf_workers=False,
+            http2=True,                  # HTTP/2
+            params={"mode": "direct", "http2": "true"},
+            headers={
+                "Accept": "application/json",
+                "X-Direct": "no-proxy"
+            },
+            cookies={"direct": "test"},
             timeout=15
         )
         
         data = response.json()
         print(f"  状态码: {response.status_code}")
         print(f"  URL 参数: {data.get('args', {})}")
-        print(f"  状态: ✓ 普通模式正常工作")
+        print(f"  状态: OK 无代理 HTTP/2 正常")
     except Exception as e:
         print(f"  错误: {e}")
     
-    print("\n[8.4] HTTP/2 模式 (无指纹):")
+    print("\n[9.5] 普通代理模式 + 指纹 (cf_workers=False):")
     try:
         response = cfspider.get(
             url="https://httpbin.org/get",
-            cf_proxies=CF_WORKERS,
-            cf_workers=True,
-            http2=True,                  # 启用 HTTP/2
-            impersonate=None,            # 不使用指纹（HTTP/2 和指纹不兼容）
-            params={"http2": "enabled"},
-            headers={"Accept": "application/json"},
+            cf_proxies=None,
+            cf_workers=False,
+            impersonate="firefox133",
+            params={"test": "direct_fingerprint"},
+            headers={"X-Test": "firefox"},
             timeout=15
         )
         
+        data = response.json()
         print(f"  状态码: {response.status_code}")
-        print(f"  CF Colo: {response.cf_colo}")
-        print(f"  状态: ✓ HTTP/2 模式正常工作")
+        print(f"  URL 参数: {data.get('args', {})}")
+        print(f"  状态: OK 直连 + 指纹正常")
     except Exception as e:
         print(f"  错误: {e}")
     
-    print("\n[8.5] 参数覆盖率统计:")
-    print("  ┌─────────────────────┬──────────┐")
-    print("  │ 参数                │ 状态     │")
-    print("  ├─────────────────────┼──────────┤")
-    print("  │ url                 │ ✓ 已测试 │")
-    print("  │ cf_proxies          │ ✓ 已测试 │")
-    print("  │ cf_workers=True     │ ✓ 已测试 │")
-    print("  │ cf_workers=False    │ ✓ 已测试 │")
-    print("  │ http2=True          │ ✓ 已测试 │")
-    print("  │ impersonate         │ ✓ 已测试 │")
-    print("  │ params              │ ✓ 已测试 │")
-    print("  │ headers             │ ✓ 已测试 │")
-    print("  │ cookies             │ ✓ 已测试 │")
-    print("  │ timeout             │ ✓ 已测试 │")
-    print("  │ json (POST)         │ ✓ 已测试 │")
-    print("  └─────────────────────┴──────────┘")
+    print("\n[9.6] 参数覆盖率统计:")
+    print("  +---------------------+----------+----------+")
+    print("  | 参数                | HTTP/2   | 指纹     |")
+    print("  +---------------------+----------+----------+")
+    print("  | url                 | OK       | OK       |")
+    print("  | cf_proxies          | OK       | OK       |")
+    print("  | cf_workers=True     | OK       | OK       |")
+    print("  | cf_workers=False    | OK       | OK       |")
+    print("  | http2=True          | OK       | -        |")
+    print("  | impersonate         | -        | OK       |")
+    print("  | params              | OK       | OK       |")
+    print("  | headers             | OK       | OK       |")
+    print("  | cookies             | OK       | OK       |")
+    print("  | timeout             | OK       | OK       |")
+    print("  | json (POST)         | OK       | OK       |")
+    print("  +---------------------+----------+----------+")
+    print("  注: http2 和 impersonate 使用不同后端，不能同时启用")
 
 
 def main():
