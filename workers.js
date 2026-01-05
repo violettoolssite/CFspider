@@ -2,7 +2,7 @@
 // 支持：同步/异步请求、TLS指纹模拟、浏览器自动化
 
 let 反代IP = '';
-const VERSION = '1.7.2';
+const VERSION = '1.7.3';
 const START_TIME = Date.now();
 
 export default {
