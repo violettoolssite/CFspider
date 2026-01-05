@@ -1,6 +1,6 @@
-# CFspider
+# CFspider - Cloudflare Workers Spider
 
-基于 Cloudflare Workers 的代理 IP 池，使用 Cloudflare 全球边缘节点 IP 作为代理出口。
+免费的代理 IP 池，利用 Cloudflare 全球 300+ 边缘节点作为出口，支持隐身模式、TLS 指纹模拟、网页镜像和浏览器自动化。
 
 > ⚠️ **重要声明**：本项目仅供学习研究、网络安全测试、合规数据采集等**合法用途**。使用者须遵守所在地法律法规及 Cloudflare 服务条款。**任何非法使用（包括但不限于网络攻击、侵犯隐私、规避版权保护等）均与本项目开发者无关，使用者自行承担全部法律责任。**
 
