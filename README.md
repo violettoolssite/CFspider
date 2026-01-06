@@ -189,6 +189,8 @@ Cloudflare Workers 免费版每日 100,000 请求，无需信用卡，无需付�
 4. 将 `workers.js` 代码粘贴到编辑器中
 5. 点击 Deploy
 
+![Workers 部署界面](workers.png)
+
 部署完成后，你将获得一个 Workers 地址，如 `https://xxx.username.workers.dev`
 
 如需自定义域名，可在 Worker → Settings → Triggers → Custom Domain 中添加。
@@ -1311,4 +1313,7 @@ Apache License 2.0
 - GitHub: https://github.com/violettoolssite/CFspider
 - PyPI: https://pypi.org/project/cfspider/
 - 官网: https://spider.violetteam.cloud
+
+![官网首页](pages.png)
+
 - edgetunnel: https://github.com/cmliu/edgetunnel
