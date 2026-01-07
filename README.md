@@ -2,16 +2,6 @@
 
 免费的代理 IP 池，利用 Cloudflare 全球 300+ 边缘节点作为出口，支持隐身模式、TLS 指纹模拟、网页镜像和浏览器自动化。
 
-## ⭐ GitHub Stars
-
-![GitHub stars](https://img.shields.io/github/stars/violettoolssite/CFspider?style=social)
-![GitHub forks](https://img.shields.io/github/forks/violettoolssite/CFspider?style=social)
-![GitHub watchers](https://img.shields.io/github/watchers/violettoolssite/CFspider?style=social)
-
-### Stars 增长趋势
-
-![Star History Chart](https://api.star-history.com/svg?repos=violettoolssite/CFspider&type=Date)
-
 ## 📸 项目截图
 
 ### 官网首页
@@ -209,6 +199,16 @@ Cloudflare Workers 免费版每日 100,000 请求，无需信用卡，无需付�
 | 随机延迟 | OK | 请求间随机等待 |
 
 ## 部署 Workers
+
+![GitHub stars](https://img.shields.io/github/stars/violettoolssite/CFspider?style=social)
+![GitHub forks](https://img.shields.io/github/forks/violettoolssite/CFspider?style=social)
+![GitHub watchers](https://img.shields.io/github/watchers/violettoolssite/CFspider?style=social)
+
+### ⭐ Stars 增长趋势
+
+![Star History Chart](https://api.star-history.com/svg?repos=violettoolssite/CFspider&type=Date)
+
+### 部署步骤
 
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. 进入 Workers & Pages
