@@ -48,7 +48,7 @@ print(response.cf_colo)  # 可能显示 NRT, SIN, LAX 等不同节点
 
 观看完整的爬虫示例演示，了解如何使用 CFspider 进行数据提取和批量处理：
 
-[点击观看代码演示视频](https://github.com/violettoolssite/CFspider/blob/main/media/videos/1080p60/CameraFollowCursorCV.mp4)
+- [下载示例视频](https://github.com/violettoolssite/CFspider/raw/main/media/videos/1080p60/CameraFollowCursorCV.mp4)
 
 > 8 行代码完成爬虫示例：请求、提取、保存一步到位
 
