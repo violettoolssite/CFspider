@@ -44,6 +44,14 @@ print(response.cf_colo)  # 可能显示 NRT, SIN, LAX 等不同节点
 - [点击观看 B 站视频教程](https://b23.tv/1uzOf7M)
 - [点击观看 YouTube 视频教程](https://youtu.be/oPeXiIFJ9TA?si=ukXsX8iP86ZTB4LP)
 
+**完整部署演示视频**
+
+观看完整的部署流程演示，了解如何从零开始搭建 CFspider 代理 IP 池：
+
+![完整部署演示](cfspiderVideo.gif)
+
+> 从 Workers 部署到测试使用的完整流程演示
+
 **代码演示视频 - 快速上手**
 
 观看完整的爬虫示例演示，了解如何使用 CFspider 进行数据提取和批量处理：
