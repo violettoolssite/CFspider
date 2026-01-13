@@ -228,7 +228,7 @@ async function handleProxyRequest(request, url, corsHeaders) {
     const headers = {};
     for (const [key, value] of request.headers.entries()) {
         if (key.startsWith('x-cfspider-header-')) {
-            headers[key.replace('x-cfspider-header-', '')] = value;
+            headers[key.replace('x-cfspider-header-', '').split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('-')] = value;
         }
     }
     
