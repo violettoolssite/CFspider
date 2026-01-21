@@ -1,0 +1,199 @@
+/* ========== 链接样式增强 - 提高可见性 ========== */
+
+/* 内容区域所有链接 */
+.content-section a {
+    color: var(--neon-cyan) !important;
+    text-decoration: none !important;
+    border-bottom: 2px solid rgba(0, 245, 255, 0.6) !important;
+    transition: all 0.3s ease;
+    font-weight: 600;
+    padding-bottom: 2px;
+}
+
+.content-section a:hover {
+    color: var(--neon-yellow) !important;
+    border-bottom-color: var(--neon-yellow) !important;
+    border-bottom-width: 3px !important;
+    text-shadow: 0 0 12px rgba(247, 247, 28, 0.8);
+}
+
+.content-section a:visited {
+    color: var(--neon-purple) !important;
+    border-bottom-color: rgba(189, 147, 249, 0.6) !important;
+}
+
+.content-section a:visited:hover {
+    color: var(--neon-yellow) !important;
+    border-bottom-color: var(--neon-yellow) !important;
+}
+
+/* 列表中的链接 */
+.content-section li a {
+    color: var(--neon-cyan) !important;
+    text-decoration: none !important;
+    border-bottom: 2px solid rgba(0, 245, 255, 0.6) !important;
+    font-weight: 600;
+    padding-bottom: 2px;
+}
+
+.content-section li a:hover {
+    color: var(--neon-yellow) !important;
+    border-bottom-color: var(--neon-yellow) !important;
+    text-shadow: 0 0 12px rgba(247, 247, 28, 0.8);
+}
+
+/* 表格中的链接 */
+.params-table a {
+    color: var(--neon-cyan) !important;
+    text-decoration: none !important;
+    border-bottom: 2px solid rgba(0, 245, 255, 0.7) !important;
+    font-weight: 600;
+    padding-bottom: 2px;
+}
+
+.params-table a:hover {
+    color: var(--neon-yellow) !important;
+    border-bottom-color: var(--neon-yellow) !important;
+    text-shadow: 0 0 12px rgba(247, 247, 28, 0.8);
+}
+
+/* 返回类型框中的链接 */
+.return-type a {
+    color: var(--neon-cyan) !important;
+    text-decoration: none !important;
+    border-bottom: 2px solid rgba(0, 245, 255, 0.7) !important;
+    font-weight: 600;
+    padding-bottom: 2px;
+}
+
+.return-type a:hover {
+    color: var(--neon-yellow) !important;
+    border-bottom-color: var(--neon-yellow) !important;
+    text-shadow: 0 0 12px rgba(247, 247, 28, 0.8);
+}
+
+/* 警告框中的链接 */
+.alert a {
+    color: var(--neon-yellow) !important;
+    text-decoration: none !important;
+    border-bottom: 2px solid rgba(247, 247, 28, 0.7) !important;
+    font-weight: 700;
+    padding-bottom: 2px;
+}
+
+.alert a:hover {
+    color: #fff !important;
+    border-bottom-color: #fff !important;
+    text-shadow: 0 0 15px rgba(255, 255, 255, 1);
+}
+
+/* 功能卡片 */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 25px;
+    margin: 30px 0;
+}
+
+.feature-card {
+    background: var(--card-bg);
+    border: 1px solid rgba(0, 245, 255, 0.2);
+    border-radius: 12px;
+    padding: 25px;
+    transition: all 0.3s ease;
+}
+
+.feature-card:hover {
+    border-color: rgba(0, 245, 255, 0.4);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(0, 245, 255, 0.2);
+}
+
+.feature-card h3 {
+    color: var(--neon-cyan);
+    margin-bottom: 12px;
+    font-size: 20px;
+}
+
+.feature-card p {
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.7;
+    margin-bottom: 15px;
+}
+
+.feature-card a {
+    color: var(--neon-cyan) !important;
+    text-decoration: none !important;
+    border-bottom: 2px solid rgba(0, 245, 255, 0.7) !important;
+    font-weight: 700;
+    padding-bottom: 2px;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+.feature-card a:hover {
+    color: var(--neon-yellow) !important;
+    border-bottom-color: var(--neon-yellow) !important;
+    text-shadow: 0 0 12px rgba(247, 247, 28, 0.8);
+    transform: translateX(5px);
+}
+
+/* 按钮样式 */
+.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: 8px;
+    text-decoration: none !important;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: 2px solid;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--neon-cyan), #0099ff);
+    color: #000;
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(0, 245, 255, 0.5);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--neon-cyan);
+    border-color: var(--neon-cyan);
+}
+
+.btn-secondary:hover {
+    background: rgba(0, 245, 255, 0.1);
+    color: var(--neon-yellow);
+    border-color: var(--neon-yellow);
+    transform: translateY(-2px);
+}
+
+/* 返回主站链接样式 */
+.home-link {
+    display: block !important;
+    margin-top: 15px;
+    padding: 8px 15px;
+    background: rgba(0, 245, 255, 0.1) !important;
+    border: 1px solid var(--neon-cyan) !important;
+    border-radius: 6px;
+    text-align: center;
+    color: var(--neon-cyan) !important;
+    text-decoration: none !important;
+    transition: all 0.3s ease;
+    font-size: 14px;
+}
+
+.home-link:hover {
+    background: rgba(0, 245, 255, 0.2) !important;
+    border-color: var(--neon-yellow) !important;
+    color: var(--neon-yellow) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 0 15px rgba(0, 245, 255, 0.4);
+}
+
