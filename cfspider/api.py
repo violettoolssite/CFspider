@@ -381,59 +381,53 @@ class CFSpiderResponse:
 
 def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=None, 
              map_output=False, map_file="cfspider_map.html", 
-             stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+             stealth=False, stealth_browser='chrome', delay=None,
+             static_ip=False, **kwargs):
     """
-    发送 HTTP 请求 / Send HTTP request
+    发送 HTTP 请求
     
     通过 CFspider Workers VLESS 代理发送请求，完全隐藏 Cloudflare 特征。
-    Send requests through CFspider Workers VLESS proxy, completely hiding Cloudflare signatures.
-    每次请求自动获取新的出口 IP。
-    Automatically gets a new exit IP for each request.
     
     Args:
-        method (str): HTTP 方法（GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH）
-                     / HTTP method (GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH)
-        url (str): 目标 URL，必须包含协议（https://）
-                  / Target URL (must include protocol, e.g., https://)
-        cf_proxies (str, optional): CFspider Workers 地址
-                                   / CFspider Workers address
-            - 如 "https://cfspider.violetqqcom.workers.dev"
-            - e.g., "https://cfspider.violetqqcom.workers.dev"
-            - 不填写时：直接请求目标 URL，不使用代理
-            - None: Direct request without proxy
-        uuid (str, optional): VLESS UUID（可选，不填则自动获取）
-            - 不填写时会自动从 Workers 首页获取 UUID
-            - When not provided, UUID will be fetched from Workers homepage
-        http2 (bool): 是否启用 HTTP/2 协议（默认 False）
-                     / Whether to enable HTTP/2 protocol (default: False)
-        impersonate (str, optional): TLS 指纹模拟，模拟真实浏览器的 TLS 握手特征
-                                   / TLS fingerprint impersonation, mimics real browser TLS handshake
-            - 可选值：chrome131, chrome124, safari18_0, firefox133, edge101 等
-            - Options: chrome131, chrome124, safari18_0, firefox133, edge101, etc.
-        map_output (bool): 是否生成 IP 地图 HTML 文件（默认 False）
-                          / Whether to generate IP map HTML file (default: False)
-        map_file (str): 地图输出文件名（默认 "cfspider_map.html"）
-                       / Map output filename (default: "cfspider_map.html")
-        stealth (bool): 是否启用隐身模式（默认 False）
-                       / Whether to enable stealth mode (default: False)
-            - True: 自动添加 15+ 个完整浏览器请求头，模拟真实浏览器访问
-            - True: Automatically adds 15+ complete browser headers, mimics real browser
-        stealth_browser (str): 隐身模式使用的浏览器类型（默认 'chrome'）
-                              / Stealth mode browser type (default: 'chrome')
-            - 可选值：chrome, firefox, safari, edge, chrome_mobile
-            - Options: chrome, firefox, safari, edge, chrome_mobile
-        delay (tuple, optional): 请求前的随机延迟范围（秒）
-                                / Random delay range before request (seconds)
-            - 如 (1, 3) 表示请求前随机等待 1-3 秒
-            - e.g., (1, 3) means random wait 1-3 seconds before request
+        method: HTTP 方法（GET, POST, PUT, DELETE, HEAD, OPTIONS, PATCH）
+        
+        url: 目标 URL，必须包含协议（如 https://）
+        
+        cf_proxies: CFspider Workers 地址（可选）
+            如 "https://cfspider.violetqqcom.workers.dev"
+            不填写时直接请求，不使用代理
+        
+        uuid: VLESS UUID（可选）
+            不填写会自动从 Workers 获取
+        
+        static_ip: 是否使用固定 IP（默认 False）
+            - False: 每次请求获取新的出口 IP（适合大规模采集）
+            - True: 保持使用同一个 IP（适合需要会话一致性的场景）
+        
+        http2: 是否启用 HTTP/2 协议（默认 False）
+        
+        impersonate: TLS 指纹模拟（可选）
+            可选值: chrome131, safari18_0, firefox133, edge101 等
+        
+        map_output: 是否生成 IP 地图 HTML 文件（默认 False）
+        
+        map_file: 地图输出文件名（默认 "cfspider_map.html"）
+        
+        stealth: 是否启用隐身模式（默认 False）
+            自动添加 15+ 个完整浏览器请求头
+        
+        stealth_browser: 隐身模式浏览器类型（默认 'chrome'）
+            可选值: chrome, firefox, safari, edge, chrome_mobile
+        
+        delay: 请求前的随机延迟范围（秒），如 (1, 3)
+        
         **kwargs: 其他参数，与 requests 库完全兼容
-                 / Other parameters, fully compatible with requests library
-            - params (dict): URL 查询参数 / URL query parameters
-            - headers (dict): 自定义请求头 / Custom headers
-            - data (dict/str): 表单数据 / Form data
-            - json (dict): JSON 数据 / JSON data
-            - cookies (dict): Cookie
-            - timeout (int/float): 超时时间（秒），默认 30 / Timeout (seconds), default: 30
+            - params: URL 查询参数
+            - headers: 自定义请求头
+            - data: 表单数据
+            - json: JSON 数据
+            - cookies: Cookie
+            - timeout: 超时时间（秒），默认 30
     
     Returns:
         CFSpiderResponse: 响应对象 / Response object
@@ -477,6 +471,7 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
             http2=http2, impersonate=impersonate,
             map_output=map_output, map_file=map_file,
             stealth=stealth, stealth_browser=stealth_browser,
+            static_ip=static_ip,
             **kwargs
         )
     
@@ -656,19 +651,22 @@ def _get_workers_config(cf_proxies):
 def _request_vless(method, url, cf_proxies, uuid=None,
                    http2=False, impersonate=None,
                    map_output=False, map_file="cfspider_map.html",
-                   stealth=False, stealth_browser='chrome', **kwargs):
+                   stealth=False, stealth_browser='chrome',
+                   static_ip=False, **kwargs):
     """
     使用 VLESS 协议发送请求
     
     通过 CFspider Workers 的 VLESS 协议代理请求，
     完全隐藏 Cloudflare 特征（CF-Ray、CF-Worker 等头）。
-    每次请求自动获取新的出口 IP。
     
     Args:
         method: HTTP 方法
         url: 目标 URL
         cf_proxies: Workers 地址
         uuid: VLESS UUID（可选，不填则自动获取）
+        static_ip: 是否使用固定 IP（默认 False）
+            - False: 每次请求获取新的出口 IP（适合大规模采集）
+            - True: 保持使用同一个 IP（适合需要会话一致性的场景）
         其他参数与 request() 相同
     """
     from .vless_client import LocalVlessProxy
@@ -702,12 +700,21 @@ def _request_vless(method, url, cf_proxies, uuid=None,
     # 构建 VLESS WebSocket URL: wss://host/uuid
     vless_url = f"wss://{host}/{uuid}"
     
-    # 每次请求创建新连接，确保获取新 IP
-    cache_key = f"{host}:{uuid}:{uuid_mod.uuid4()}"
-    
-    # 创建本地 VLESS 代理（不缓存，每次新连接）
-    proxy = LocalVlessProxy(vless_url, uuid)
-    port = proxy.start()
+    # 根据 static_ip 参数决定是否复用连接
+    if static_ip:
+        # 固定 IP 模式：复用同一个连接
+        cache_key = f"{host}:{uuid}"
+        if cache_key in _vless_proxy_cache:
+            proxy = _vless_proxy_cache[cache_key]
+            port = proxy.port
+        else:
+            proxy = LocalVlessProxy(vless_url, uuid)
+            port = proxy.start()
+            _vless_proxy_cache[cache_key] = proxy
+    else:
+        # 动态 IP 模式：每次创建新连接
+        proxy = LocalVlessProxy(vless_url, uuid)
+        port = proxy.start()
     
     # 构建本地代理 URL
     local_proxy = f"http://127.0.0.1:{port}"
@@ -819,11 +826,10 @@ def stop_vless_proxies():
 
 def get(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
         map_output=False, map_file="cfspider_map.html",
-        stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+        stealth=False, stealth_browser='chrome', delay=None, 
+        static_ip=False, **kwargs):
     """
     发送 GET 请求 / Send GET request
-    
-    每次请求自动获取新的出口 IP。
     
     Args:
         url: 目标 URL（必须包含协议，如 https://）
@@ -834,6 +840,10 @@ def get(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
         
         uuid: VLESS UUID（可选）
             不填写会自动从 Workers 获取
+        
+        static_ip: 是否使用固定 IP（默认 False）
+            - False: 每次请求获取新的出口 IP（适合大规模采集）
+            - True: 保持使用同一个 IP（适合需要会话一致性的场景）
         
         http2: 是否启用 HTTP/2 协议（默认 False）
         
@@ -856,83 +866,96 @@ def get(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
         CFSpiderResponse: 响应对象
     
     Example:
+        >>> # 动态 IP（默认，每次请求换 IP）
         >>> response = cfspider.get(
         ...     "https://httpbin.org/ip",
         ...     cf_proxies="https://cfspider.violetqqcom.workers.dev"
         ... )
-        >>> print(response.json()['origin'])
+        >>> 
+        >>> # 固定 IP（保持同一个 IP）
+        >>> response = cfspider.get(
+        ...     "https://httpbin.org/ip",
+        ...     cf_proxies="https://cfspider.violetqqcom.workers.dev",
+        ...     static_ip=True
+        ... )
     """
     return request("GET", url, cf_proxies=cf_proxies, uuid=uuid, 
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay, 
-                   **kwargs)
+                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+                   static_ip=static_ip, **kwargs)
 
 
 def post(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
          map_output=False, map_file="cfspider_map.html",
-         stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+         stealth=False, stealth_browser='chrome', delay=None,
+         static_ip=False, **kwargs):
     """发送 POST 请求 / Send POST request"""
     return request("POST", url, cf_proxies=cf_proxies, uuid=uuid,
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay, 
-                   **kwargs)
+                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+                   static_ip=static_ip, **kwargs)
 
 
 def put(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
         map_output=False, map_file="cfspider_map.html",
-        stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+        stealth=False, stealth_browser='chrome', delay=None,
+        static_ip=False, **kwargs):
     """发送 PUT 请求 / Send PUT request"""
     return request("PUT", url, cf_proxies=cf_proxies, uuid=uuid,
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
                    stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   **kwargs)
+                   static_ip=static_ip, **kwargs)
 
 
 def delete(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
            map_output=False, map_file="cfspider_map.html",
-           stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+           stealth=False, stealth_browser='chrome', delay=None,
+           static_ip=False, **kwargs):
     """发送 DELETE 请求 / Send DELETE request"""
     return request("DELETE", url, cf_proxies=cf_proxies, uuid=uuid,
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
                    stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   **kwargs)
+                   static_ip=static_ip, **kwargs)
 
 
 def head(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
          map_output=False, map_file="cfspider_map.html",
-         stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+         stealth=False, stealth_browser='chrome', delay=None,
+         static_ip=False, **kwargs):
     """发送 HEAD 请求 / Send HEAD request"""
     return request("HEAD", url, cf_proxies=cf_proxies, uuid=uuid,
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
                    stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   **kwargs)
+                   static_ip=static_ip, **kwargs)
 
 
 def options(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
             map_output=False, map_file="cfspider_map.html",
-            stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+            stealth=False, stealth_browser='chrome', delay=None,
+            static_ip=False, **kwargs):
     """发送 OPTIONS 请求 / Send OPTIONS request"""
     return request("OPTIONS", url, cf_proxies=cf_proxies, uuid=uuid,
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
                    stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   **kwargs)
+                   static_ip=static_ip, **kwargs)
 
 
 def patch(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
           map_output=False, map_file="cfspider_map.html",
-          stealth=False, stealth_browser='chrome', delay=None, **kwargs):
+          stealth=False, stealth_browser='chrome', delay=None,
+          static_ip=False, **kwargs):
     """发送 PATCH 请求 / Send PATCH request"""
     return request("PATCH", url, cf_proxies=cf_proxies, uuid=uuid,
                    http2=http2, impersonate=impersonate,
                    map_output=map_output, map_file=map_file,
                    stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   **kwargs)
+                   static_ip=static_ip, **kwargs)
 
 
 def clear_map_records():
