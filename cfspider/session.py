@@ -47,7 +47,7 @@ class Session:
         please use cfspider.StealthSession.
     """
     
-    def __init__(self, cf_proxies=None, uuid=None):
+    def __init__(self, cf_proxies=None, uuid=None, static_ip=False, two_proxy=None):
         """
         初始化会话 / Initialize session
         
@@ -61,6 +61,11 @@ class Session:
             uuid (str, optional): VLESS UUID（可选）
                 如果不填写，会自动从 Workers 首页获取
                 If not provided, will be auto-fetched from Workers homepage
+            static_ip (bool): 是否使用固定 IP 模式（默认 False）
+                / Whether to use static IP mode (default False)
+            two_proxy (str, optional): 第二层代理配置
+                / Second layer proxy configuration
+                格式：host:port:user:pass 或 host:port
         
         Raises:
             ValueError: 当 cf_proxies 为空时
@@ -74,6 +79,12 @@ class Session:
             ...     cf_proxies="https://cfspider.violetqqcom.workers.dev",
             ...     uuid="c373c80c-58e4-4e64-8db5-40096905ec58"
             ... )
+            >>> 
+            >>> # 固定 IP 模式
+            >>> session = cfspider.Session(
+            ...     cf_proxies="https://cfspider.violetqqcom.workers.dev",
+            ...     static_ip=True
+            ... )
         """
         if not cf_proxies:
             raise ValueError(
@@ -86,6 +97,8 @@ class Session:
             )
         self.cf_proxies = cf_proxies.rstrip("/") if cf_proxies else None
         self.uuid = uuid
+        self.static_ip = static_ip
+        self.two_proxy = two_proxy
         self.headers = {}
         self.cookies = {}
         self._base_headers = {}  # 兼容 StealthSession API
@@ -226,11 +239,24 @@ class Session:
         cookies = self.cookies.copy()
         cookies.update(kwargs.pop("cookies", {}))
         
+        # 如果用户在请求中指定了 uuid，使用用户指定的，否则使用 Session 的
+        uuid = kwargs.pop("uuid", None) or self.uuid
+        # 如果用户在请求中指定了 cf_proxies，使用用户指定的，否则使用 Session 的
+        cf_proxies = kwargs.pop("cf_proxies", None) or self.cf_proxies
+        # 如果用户在请求中指定了 static_ip，使用用户指定的，否则使用 Session 的
+        static_ip = kwargs.pop("static_ip", None)
+        if static_ip is None:
+            static_ip = self.static_ip
+        # 如果用户在请求中指定了 two_proxy，使用用户指定的，否则使用 Session 的
+        two_proxy = kwargs.pop("two_proxy", None) or self.two_proxy
+        
         response = request(
             method,
             url,
-            cf_proxies=self.cf_proxies,
-            uuid=self.uuid,
+            cf_proxies=cf_proxies,
+            uuid=uuid,
+            static_ip=static_ip,
+            two_proxy=two_proxy,
             headers=headers,
             cookies=cookies,
             **kwargs

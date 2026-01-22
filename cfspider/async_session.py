@@ -31,6 +31,7 @@ class AsyncSession:
         timeout: float = 30,
         headers: Optional[Dict[str, str]] = None,
         cookies: Optional[Dict[str, str]] = None,
+        token: Optional[str] = None,
         **kwargs
     ):
         """
@@ -43,6 +44,7 @@ class AsyncSession:
             timeout: 默认超时时间（秒）
             headers: 默认请求头
             cookies: 默认 Cookies
+            token: CFspider Workers API token（选填）
             **kwargs: 传递给 httpx.AsyncClient 的其他参数
         """
         self.cf_proxies = cf_proxies

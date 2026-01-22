@@ -295,6 +295,8 @@ class StealthSession:
         uuid: str = None,
         delay: Tuple[float, float] = None,
         auto_referer: bool = True,
+        static_ip: bool = False,
+        two_proxy: str = None,
         **kwargs
     ):
         """
@@ -322,6 +324,11 @@ class StealthSession:
                 - 第一次请求不会延迟 / First request won't be delayed
             auto_referer (bool): 是否自动添加 Referer（默认 True）
                                 / Whether to auto-add Referer (default: True)
+            static_ip (bool): 是否使用固定 IP 模式（默认 False）
+                             / Whether to use static IP mode (default False)
+            two_proxy (str, optional): 第二层代理配置
+                                      / Second layer proxy configuration
+                格式：host:port:user:pass 或 host:port
             **kwargs: 保留参数，用于未来扩展 / Reserved for future extensions
         
         Example:
@@ -337,6 +344,8 @@ class StealthSession:
         self.uuid = uuid
         self.delay = delay
         self.auto_referer = auto_referer
+        self.static_ip = static_ip
+        self.two_proxy = two_proxy
         self.last_url = None
         self.request_count = 0
         self._extra_kwargs = kwargs
@@ -457,10 +466,20 @@ class StealthSession:
         cookies = kwargs.pop('cookies', {})
         cookies.update(self._cookies)
         
+        # 提取可覆盖的参数，避免重复传递
+        uuid = kwargs.pop('uuid', None) or self.uuid
+        cf_proxies = kwargs.pop('cf_proxies', None) or self.cf_proxies
+        static_ip = kwargs.pop('static_ip', None)
+        if static_ip is None:
+            static_ip = getattr(self, 'static_ip', False)
+        two_proxy = kwargs.pop('two_proxy', None) or getattr(self, 'two_proxy', None)
+        
         response = _get(
             url,
-            cf_proxies=self.cf_proxies,
-            uuid=self.uuid,
+            cf_proxies=cf_proxies,
+            uuid=uuid,
+            static_ip=static_ip,
+            two_proxy=two_proxy,
             headers=headers,
             cookies=cookies,
             **kwargs
@@ -496,10 +515,20 @@ class StealthSession:
         cookies = kwargs.pop('cookies', {})
         cookies.update(self._cookies)
         
+        # 提取可覆盖的参数，避免重复传递
+        uuid = kwargs.pop('uuid', None) or self.uuid
+        cf_proxies = kwargs.pop('cf_proxies', None) or self.cf_proxies
+        static_ip = kwargs.pop('static_ip', None)
+        if static_ip is None:
+            static_ip = getattr(self, 'static_ip', False)
+        two_proxy = kwargs.pop('two_proxy', None) or getattr(self, 'two_proxy', None)
+        
         response = _post(
             url,
-            cf_proxies=self.cf_proxies,
-            uuid=self.uuid,
+            cf_proxies=cf_proxies,
+            uuid=uuid,
+            static_ip=static_ip,
+            two_proxy=two_proxy,
             headers=headers,
             cookies=cookies,
             **kwargs
@@ -519,10 +548,21 @@ class StealthSession:
         headers = self._prepare_headers(url, kwargs.pop('headers', None))
         cookies = kwargs.pop('cookies', {})
         cookies.update(self._cookies)
+        
+        # 提取可覆盖的参数，避免重复传递
+        uuid = kwargs.pop('uuid', None) or self.uuid
+        cf_proxies = kwargs.pop('cf_proxies', None) or self.cf_proxies
+        static_ip = kwargs.pop('static_ip', None)
+        if static_ip is None:
+            static_ip = getattr(self, 'static_ip', False)
+        two_proxy = kwargs.pop('two_proxy', None) or getattr(self, 'two_proxy', None)
+        
         response = _put(
             url,
-            cf_proxies=self.cf_proxies,
-            uuid=self.uuid,
+            cf_proxies=cf_proxies,
+            uuid=uuid,
+            static_ip=static_ip,
+            two_proxy=two_proxy,
             headers=headers,
             cookies=cookies,
             **kwargs
@@ -540,10 +580,21 @@ class StealthSession:
         headers = self._prepare_headers(url, kwargs.pop('headers', None))
         cookies = kwargs.pop('cookies', {})
         cookies.update(self._cookies)
+        
+        # 提取可覆盖的参数，避免重复传递
+        uuid = kwargs.pop('uuid', None) or self.uuid
+        cf_proxies = kwargs.pop('cf_proxies', None) or self.cf_proxies
+        static_ip = kwargs.pop('static_ip', None)
+        if static_ip is None:
+            static_ip = getattr(self, 'static_ip', False)
+        two_proxy = kwargs.pop('two_proxy', None) or getattr(self, 'two_proxy', None)
+        
         response = _delete(
             url,
-            cf_proxies=self.cf_proxies,
-            uuid=self.uuid,
+            cf_proxies=cf_proxies,
+            uuid=uuid,
+            static_ip=static_ip,
+            two_proxy=two_proxy,
             headers=headers,
             cookies=cookies,
             **kwargs
@@ -561,10 +612,21 @@ class StealthSession:
         headers = self._prepare_headers(url, kwargs.pop('headers', None))
         cookies = kwargs.pop('cookies', {})
         cookies.update(self._cookies)
+        
+        # 提取可覆盖的参数，避免重复传递
+        uuid = kwargs.pop('uuid', None) or self.uuid
+        cf_proxies = kwargs.pop('cf_proxies', None) or self.cf_proxies
+        static_ip = kwargs.pop('static_ip', None)
+        if static_ip is None:
+            static_ip = getattr(self, 'static_ip', False)
+        two_proxy = kwargs.pop('two_proxy', None) or getattr(self, 'two_proxy', None)
+        
         response = _head(
             url,
-            cf_proxies=self.cf_proxies,
-            uuid=self.uuid,
+            cf_proxies=cf_proxies,
+            uuid=uuid,
+            static_ip=static_ip,
+            two_proxy=two_proxy,
             headers=headers,
             cookies=cookies,
             **kwargs

@@ -465,6 +465,9 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
         ...     )
         ...     print(response.json()['origin'])  # 每次都是不同 IP
     """
+    # 移除不支持的旧版参数（保持向后兼容）
+    kwargs.pop("token", None)
+    
     # 应用随机延迟
     if delay:
         from .stealth import random_delay
