@@ -149,6 +149,16 @@ print(response.json())  # 出口 IP 为第二层代理的 IP
 
 - **Cliproxy**: [https://dash.cliproxy.com/](https://dash.cliproxy.com/) - 支持 HTTP/SOCKS5 代理，覆盖全球多个地区
 
+- **1024proxy**: [https://1024proxy.com/](https://1024proxy.com/) - 全球住宅 IP 服务商，0.49/GB起。灵活适配各类业务场景，为企业级数据采集服务，提供稳定基础设施，助力业务增长。
+
+- **Novproxy**: [https://novproxy.com/](https://novproxy.com/) - 1亿+ 住宅 IP，覆盖 190 个国家，$0.5/GB 起，支持动态住宅、长期静态 ISP、无限流量套餐，99% 成功率。
+
+### 免费域名推荐
+
+部署 CFspider Workers 需要自定义域名（避免 workers.dev 在国内被干扰），推荐：
+
+- **DNSHE**: [https://my.dnshe.com/](https://my.dnshe.com/) - 提供免费域名注册，支持 GitHub 登录，适合个人开发者使用。注册后可将免费域名绑定到 Cloudflare Workers。
+
 代理格式示例：
 ```
 # HTTP 代理格式
