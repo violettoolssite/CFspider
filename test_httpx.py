@@ -1,14 +1,17 @@
+# -*- coding: utf-8 -*-
 """
 测试 cfspider httpx 异步功能
 """
 import asyncio
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, '.')
 
 import cfspider
 
-# Workers 地址
-CF_WORKERS = "https://ip.kami666.xyz"
+# Workers 地址和 UUID
+CF_WORKERS = "https://cfspider.violetqqcom.workers.dev"
+CF_UUID = "3fde701a-f0c9-45e7-a1b0-b5fe62c4698c"
 
 async def test_async_no_proxy():
     """测试异步请求 - 无代理"""
@@ -175,6 +178,7 @@ def test_sync_http2_workers():
         response = cfspider.get(
             "https://httpbin.org/ip",
             cf_proxies=CF_WORKERS,
+            uuid=CF_UUID,
             http2=True
         )
         print(f"状态码: {response.status_code}")

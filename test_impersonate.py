@@ -1,13 +1,16 @@
+# -*- coding: utf-8 -*-
 """
 测试 cfspider TLS 指纹模拟功能
 """
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, '.')
 
 import cfspider
 
-# Workers 地址
-CF_WORKERS = "https://ip.kami666.xyz"
+# Workers 地址和 UUID
+CF_WORKERS = "https://cfspider.violetqqcom.workers.dev"
+CF_UUID = "3fde701a-f0c9-45e7-a1b0-b5fe62c4698c"
 
 
 def test_impersonate_get():
@@ -80,7 +83,7 @@ def test_impersonate_firefox():
 def test_impersonate_workers():
     """测试 TLS 指纹 + Workers 代理"""
     print("\n" + "="*60)
-    print("测试 4: TLS 指纹 + Workers 代理")
+    print("测试 4: TLS 指纹 + Workers 代理 (使用 /proxy API)")
     print("="*60)
     
     try:

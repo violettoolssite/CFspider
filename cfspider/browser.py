@@ -176,7 +176,7 @@ class Browser:
                     proxy_url = f"http://127.0.0.1:{port}"
                 else:
                     # 直接使用 HTTP 代理
-                proxy_url = cf_proxies
+                    proxy_url = cf_proxies
             # 3. IP:PORT 格式
             elif ':' in cf_proxies and cf_proxies.replace('.', '').replace(':', '').isdigit():
                 proxy_url = f"http://{cf_proxies}"
@@ -187,10 +187,10 @@ class Browser:
                 if uuid:
                     ws_url = f'wss://{hostname}/{uuid}'
                     self._vless_proxy = LocalVlessProxy(ws_url, uuid)
-                port = self._vless_proxy.start()
-                proxy_url = f"http://127.0.0.1:{port}"
-            else:
-                proxy_url = f"http://{cf_proxies}"
+                    port = self._vless_proxy.start()
+                    proxy_url = f"http://127.0.0.1:{port}"
+                else:
+                    proxy_url = f"http://{cf_proxies}"
     
     def _get_workers_uuid(self, workers_url):
         """从 Workers 获取 UUID / Get UUID from Workers"""

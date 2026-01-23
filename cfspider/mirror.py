@@ -179,7 +179,7 @@ class WebMirror:
                 cf_proxies=self.cf_proxies,
                 headless=True,
                 timeout=self.timeout,
-                vless_uuid=self.vless_uuid
+                uuid=self.vless_uuid
             )
         return self._browser
     
