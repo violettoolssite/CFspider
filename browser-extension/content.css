@@ -1,0 +1,80 @@
+/* CFspider GitHub 加速按钮样式 */
+
+.cfspider-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #00d4ff 0%, #7b2cbf 100%);
+  color: #fff !important;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  vertical-align: middle;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+}
+
+.cfspider-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+  opacity: 0.95;
+}
+
+.cfspider-btn:active {
+  transform: translateY(0);
+}
+
+.cfspider-btn svg {
+  flex-shrink: 0;
+}
+
+.cfspider-btn.loading {
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.cfspider-btn .spinner {
+  animation: cfspider-spin 1s linear infinite;
+}
+
+@keyframes cfspider-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* GitHub Releases 页面特殊适配 */
+.release-main-section .cfspider-btn {
+  margin-left: 12px;
+}
+
+/* Assets 列表适配 */
+.Box-row .cfspider-btn {
+  margin-left: 8px;
+}
+
+/* 代码下载按钮适配 */
+.get-repo-btn + .cfspider-btn,
+.btn-primary + .cfspider-btn {
+  margin-left: 8px;
+}
+
+/* 暗色主题适配 */
+[data-color-mode="dark"] .cfspider-btn,
+.dark .cfspider-btn {
+  box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+}
+
+[data-color-mode="dark"] .cfspider-btn:hover,
+.dark .cfspider-btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+}
+

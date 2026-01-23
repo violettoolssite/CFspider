@@ -1,11 +1,16 @@
 import cfspider
+import os
 
-# 直接使用海外代理
-response = cfspider.get(
+# 禁用系统代理
+os.environ['NO_PROXY'] = '*'
+os.environ['no_proxy'] = '*'
+
+# VLESS 模式测试（需要 UUID）
+res = cfspider.get(
     "https://httpbin.org/ip",
-    proxies={
-        "http": "http://us.cliproxy.io:3010",
-        "https": "http://2e75108689-region-JP:nf9ssu7a@us.cliproxy.io:3010"
-    }
+    cf_proxies="https://ip.kami666.xyz",
+    uuid="c373c80c-58e4-4e64-8db5-40096905ec58",
 )
-print(response.json())
+print(f"状态码: {res.status_code}")
+print(f"出口 IP: {res.text}")
+print(f"CF 节点: {res.cf_colo}")

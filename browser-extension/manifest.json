@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "CFspider GitHub 加速",
+  "version": "1.0.0",
+  "description": "使用 CFspider Workers 加速 GitHub 文件下载",
+  "author": "CFspider",
+  "homepage_url": "https://github.com/violettoolssite/CFspider",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://objects.githubusercontent.com/*",
+    "https://raw.githubusercontent.com/*",
+    "https://codeload.github.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ]
+}
+
