@@ -1733,6 +1733,34 @@ cfspider batch <urls...> [options]
   -q, --quiet             安静模式
 ```
 
+## 浏览器扩展（GitHub 加速）
+
+CFspider 附带浏览器扩展，可在 GitHub 下载链接旁显示「加速」按钮。
+
+### 安装扩展
+
+1. 打开 Chrome，访问 `chrome://extensions/`
+2. 开启右上角「开发者模式」
+3. 点击「加载已解压的扩展程序」
+4. 选择项目中的 `browser-extension` 文件夹
+
+### 配置
+
+点击浏览器工具栏的 CFspider 图标，填写：
+- **Workers 地址**：你的 CFspider Workers URL
+- **UUID**：VLESS UUID
+
+### 使用
+
+配置完成后，访问 GitHub Releases 页面，每个下载链接旁会显示「加速」按钮，点击即可通过 Workers 加速下载。
+
+**支持的下载链接：**
+- `github.com/.../releases/download/...`
+- `github.com/.../archive/...`
+- `github.com/.../raw/...`
+- `raw.githubusercontent.com/...`
+- `codeload.github.com/...`
+
 ## 浏览器模式
 
 CFspider 支持浏览器模式，可以渲染 JavaScript 动态页面、截图、生成 PDF、自动化操作等。
