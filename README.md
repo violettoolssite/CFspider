@@ -44,10 +44,10 @@
 # 2. 部署 破皮版workers.js 到 Workers
 # 3. 访问根路径会看到 Nginx 伪装页面
 # 4. 访问 /x2727admin 获取加密配置
-# 5. 使用本地解密工具获取 VLESS 链接
+# 5. 使用解密工具获取 VLESS 链接
 ```
 
-**解密工具：** 使用项目中的 `decrypt-server/decrypt-local.html`，双击在浏览器中打开即可本地解密
+**解密工具：** [https://x27cn.cfspider.com](https://x27cn.cfspider.com)
 ---
 
 ## 支持 v2ray/Xray 客户端
