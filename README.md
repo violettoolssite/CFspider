@@ -14,6 +14,33 @@
 
 ---
 
+## ⚠️ 重要：破皮版 Workers（增强反检测）
+
+> **如果你的 Workers 被 Cloudflare 检测封禁（错误代码 1101），请使用 `破皮版workers.js`！**
+
+这是经过特殊处理的增强版本，具有更强的反检测能力：
+
+| 特性 | 说明 |
+|------|------|
+| **伪装首页** | 根路径 `/` 显示 Ubuntu Apache2 默认欢迎页面，伪装成普通 HTTP 服务器 |
+| **隐藏入口** | 真实 API 需访问 `/x2727admin` 路径 |
+| **X27CN 加密** | 所有 API 响应加密，需专用工具解密 |
+| **代码混淆** | 全部代码压缩为单行，移除所有中文字符 |
+| **无特征码** | 移除可能被检测的关键词和特征模式 |
+
+**快速使用：**
+
+```bash
+# 1. 部署 破皮版workers.js 到 Cloudflare Workers
+# 2. 访问根路径会看到 Apache2 伪装页面
+# 3. 访问 /x2727admin 获取加密配置
+# 4. 使用解密工具获取 VLESS 链接
+```
+
+**解密工具：** [https://x27cn.cfspider.com](https://x27cn.cfspider.com) | 源码：`x27cn-pages/index.html`
+
+---
+
 ## 支持 v2ray/Xray 客户端
 
 > **CFspider Workers 支持标准 VLESS 协议**，可直接在 v2ray/Xray 客户端中使用！
