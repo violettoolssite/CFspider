@@ -25,6 +25,7 @@ test_mirror_*/
 #混淆脚本
 obfuscate_pages.py
 obfuscate_config.json
+x27cn-pages/X27CN_ALGORITHM.md
 
 #示例文件
 examples/
