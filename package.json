@@ -3,6 +3,7 @@
     "@neondatabase/serverless": "^1.0.2"
   },
   "devDependencies": {
-    "javascript-obfuscator": "^5.1.0"
+    "javascript-obfuscator": "^5.1.0",
+    "terser": "^5.46.0"
   }
 }
