@@ -17,6 +17,9 @@ test_*.py
 *.html
 !x27cn-pages/index.html
 
+# 机密文档 - 不上传
+x27cn-pages/X27CN_ALGORITHM.md
+
 # 镜像输出目录
 mirror/
 *_mirror/
