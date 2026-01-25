@@ -288,11 +288,19 @@ def inject_protection(js_code: str, **kwargs) -> str:
 
 
 def _random_vars(count: int) -> list:
-    """生成随机变量名"""
-    chars = string.ascii_letters
+    """生成迷惑性随机变量名"""
+    # 迷惑性字符集：埃及科普特 + 希腊 + 西里尔 + l/I/O
+    confusing = [
+        'l', 'I', 'O',  # l/I, O/0 迷惑
+        'α', 'ο', 'а', 'е', 'о',  # 希腊/西里尔 (像 a, o, e)
+        'ⲁ', 'ⲃ', 'ⲅ', 'ⲇ', 'ⲉ', 'ⲏ', 'ⲓ', 'ⲕ', 'ⲙ', 'ⲛ', 'ⲟ', 'ⲣ', 'ⲥ', 'ⲧ',  # 科普特(埃及)
+        'ꓲ', 'ꓳ', 'ꓴ', 'ꓵ', 'ꓶ', 'ꓷ', 'ꓸ', 'ꓹ', 'ꓺ', 'ꓻ',  # Lisu
+    ]
     vars = []
     for _ in range(count):
-        name = '_$' + ''.join(random.choice(chars) for _ in range(6))
+        # 生成 6-8 个迷惑字符
+        length = random.randint(6, 8)
+        name = ''.join(random.choice(confusing) for _ in range(length))
         vars.append(name)
     return vars
 

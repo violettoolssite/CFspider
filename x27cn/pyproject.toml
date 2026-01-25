@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "x27cn"
-version = "1.4.0"
+version = "1.4.1"
 description = "X27CN - Advanced code obfuscation, encryption and anti-crawl protection"
 readme = "README.md"
 license = "MIT"

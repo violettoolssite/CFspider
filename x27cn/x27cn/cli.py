@@ -33,7 +33,7 @@ def main():
         prog='x27cn',
         description='X27CN 代码混淆加密工具'
     )
-    parser.add_argument('--version', action='version', version='x27cn 1.4.0')
+    parser.add_argument('--version', action='version', version='x27cn 1.4.1')
     
     subparsers = parser.add_subparsers(dest='command', help='命令')
     

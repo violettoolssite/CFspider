@@ -81,13 +81,15 @@ from .anti_crawl import (
 
 from .advanced import (
     encrypt_strings,
+    obfuscate_numbers,
+    obfuscate_operators,
     advanced_obfuscate,
     full_obfuscate,
     obfuscate_file_full,
     quick_protect,
 )
 
-__version__ = '1.4.0'
+__version__ = '1.4.1'
 __author__ = 'CFspider'
 __all__ = [
     # 核心加密
@@ -141,6 +143,8 @@ __all__ = [
     'inject_protection',
     # 高级混淆（一键式）
     'encrypt_strings',
+    'obfuscate_numbers',
+    'obfuscate_operators',
     'advanced_obfuscate',
     'full_obfuscate',
     'obfuscate_file_full',

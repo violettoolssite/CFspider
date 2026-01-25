@@ -126,12 +126,32 @@ def _mangle_variables(js: str) -> str:
     # 找到函数作用域内的变量声明
     var_pattern = re.compile(r'\b(var|let|const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)')
     
-    # 生成短变量名
+    # 生成迷惑性变量名
     def gen_name(index):
-        chars = 'abcdefghijklmnopqrstuvwxyz'
-        if index < 26:
-            return '_' + chars[index]
-        return '_' + chars[index // 26 - 1] + chars[index % 26]
+        # 迷惑性字符集：
+        # - l, I, 1 (小写L, 大写i, 数字1)
+        # - O, 0 (大写O, 数字0)
+        # - α, а (希腊alpha, 西里尔a)
+        # - ⲁ, ⲃ, ⲅ (科普特/埃及字母)
+        # - ꓲ, ꓳ, ꓴ (Lisu字母，像数字)
+        confusing = [
+            'l', 'I', 'O',  # 基础迷惑
+            'α', 'ο', 'а', 'е', 'о',  # 希腊/西里尔 (像 a, o, e)
+            'ⲁ', 'ⲃ', 'ⲅ', 'ⲇ', 'ⲉ', 'ⲏ', 'ⲓ', 'ⲕ', 'ⲙ', 'ⲛ', 'ⲟ', 'ⲣ', 'ⲥ', 'ⲧ',  # 科普特(埃及)
+            'ꓲ', 'ꓳ', 'ꓴ', 'ꓵ', 'ꓶ', 'ꓷ', 'ꓸ', 'ꓹ', 'ꓺ', 'ꓻ',  # Lisu
+        ]
+        base = len(confusing)
+        if index < base:
+            return confusing[index]
+        # 组合生成更多
+        first = index // base
+        second = index % base
+        if first < base:
+            return confusing[first] + confusing[second]
+        # 三字符
+        third = first // base
+        first = first % base
+        return confusing[third % base] + confusing[first] + confusing[second]
     
     # 收集变量
     var_map = {}
@@ -394,10 +414,25 @@ def obfuscate_identifiers(js: str) -> str:
     for match in re.finditer(r'\bfunction\s+([a-zA-Z_$][a-zA-Z0-9_$]*)', js):
         declarations.add(match.group(1))
     
-    # 生成混淆名
+    # 生成迷惑性混淆名
     def gen_name(index):
-        # 使用 _$0, _$1, ... 格式
-        return f'_${index:x}'
+        # 迷惑性字符集：埃及科普特 + 希腊 + 西里尔 + l/I/O/0
+        confusing = [
+            'l', 'I', 'O',  # l/I, O/0 迷惑
+            'α', 'ο', 'а', 'е', 'о',  # 希腊/西里尔 (像 a, o, e)
+            'ⲁ', 'ⲃ', 'ⲅ', 'ⲇ', 'ⲉ', 'ⲏ', 'ⲓ', 'ⲕ', 'ⲙ', 'ⲛ', 'ⲟ', 'ⲣ', 'ⲥ', 'ⲧ',  # 科普特(埃及)
+            'ꓲ', 'ꓳ', 'ꓴ', 'ꓵ', 'ꓶ', 'ꓷ', 'ꓸ', 'ꓹ', 'ꓺ', 'ꓻ',  # Lisu
+        ]
+        base = len(confusing)
+        if index < base:
+            return confusing[index]
+        first = index // base
+        second = index % base
+        if first < base:
+            return confusing[first] + confusing[second]
+        third = first // base
+        first = first % base
+        return confusing[third % base] + confusing[first] + confusing[second]
     
     # 过滤保留字和内置对象
     reserved = {
