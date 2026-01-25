@@ -4,7 +4,64 @@
 [![Python](https://img.shields.io/pypi/pyversions/cfspider)](https://pypi.org/project/cfspider/)
 [![License](https://img.shields.io/github/license/violettoolssite/CFspider)](LICENSE)
 
-**v1.8.7** - 基于 VLESS 协议的免费代理 IP 池，利用 Cloudflare 全球 300+ 边缘节点作为出口，**完全隐藏 CF 特征**，支持隐身模式、TLS 指纹模拟、网页镜像和浏览器自动化。
+**v1.8.9** - 基于 VLESS 协议的免费代理 IP 池，利用 Cloudflare 全球 300+ 边缘节点作为出口，**完全隐藏 CF 特征**，支持隐身模式、TLS 指纹模拟、网页镜像和浏览器自动化。
+
+---
+
+## v1.8.9 重大更新：一键自动部署 Workers
+
+> **无需手动部署！** 只需 API Token 和 Account ID，即可自动创建、部署和管理 Cloudflare Workers。
+
+```python
+import cfspider
+
+# 一行代码，自动部署破皮版 Workers
+workers = cfspider.make_workers(
+    api_token="your-api-token",
+    account_id="your-account-id"
+)
+
+# 直接使用代理
+response = cfspider.get("https://httpbin.org/ip", cf_proxies=workers)
+print(response.json())  # 显示 Cloudflare IP
+```
+
+**核心特性：**
+
+| 功能 | 说明 |
+|------|------|
+| **一键部署** | 自动创建 Workers，无需手动复制代码 |
+| **破皮版内置** | 自动部署带 Nginx 伪装的反检测版本 |
+| **自动重建** | Workers 失效时自动重新创建（可配置） |
+| **环境变量** | 支持 UUID、PROXYIP、KEY 等配置 |
+| **自定义域名** | 支持 `my_domain` 参数自动配置域名 |
+
+**获取 API Token 和 Account ID：**
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. **Account ID**：Workers & Pages → 右侧边栏
+3. **API Token**：头像 → My Profile → API Tokens → Create Token → 选择 "Edit Cloudflare Workers"
+
+**完整参数：**
+
+```python
+workers = cfspider.make_workers(
+    api_token="xxx",           # Cloudflare API Token（必需）
+    account_id="xxx",          # Account ID（必需）
+    uuid="your-uuid",          # VLESS UUID（可选）
+    proxyip="1.2.3.4",         # 优选 IP（可选，支持多个逗号分隔）
+    key="encrypt-key",         # 加密密钥（可选）
+    accesskey="access-key",    # 访问密钥（可选）
+    my_domain="proxy.example.com",  # 自定义域名（可选）
+    auto_recreate=True,        # 失效自动重建（默认 True）
+)
+
+# 返回对象属性
+print(workers.url)            # Workers URL
+print(workers.uuid)           # UUID
+print(workers.healthy)        # 健康状态
+print(workers.custom_url)     # 自定义域名 URL
+```
 
 ---
 
