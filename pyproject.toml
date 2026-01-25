@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfspider"
-version = "1.8.7"
+version = "1.8.8"
 description = "Cloudflare Workers proxy IP pool client"
 readme = "README.md"
 license = {text = "Apache-2.0"}
