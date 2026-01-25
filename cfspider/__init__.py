@@ -26,6 +26,13 @@ UUID 使用说明：
 快速开始：
     >>> import cfspider
     >>> 
+    >>> # 自动创建 Workers（推荐）
+    >>> workers = cfspider.make_workers(
+    ...     api_token="your-api-token",
+    ...     account_id="your-account-id"
+    ... )
+    >>> response = cfspider.get("https://httpbin.org/ip", cf_proxies=workers)
+    >>> 
     >>> # 基本 GET 请求（无代理）
     >>> response = cfspider.get("https://httpbin.org/ip")
     >>> print(response.json())
@@ -91,6 +98,14 @@ from .proxy_server import (
     generate_vless_link,
     start_proxy_server,
     TwoProxyServer
+)
+
+# Workers 管理器（自动创建和管理 Workers）
+from .workers_manager import (
+    make_workers,
+    list_workers,
+    delete_workers,
+    WorkersManager
 )
 
 # 异步 API（基于 httpx）
@@ -230,7 +245,7 @@ class PlaywrightNotInstalledError(CFSpiderError):
     pass
 
 
-__version__ = "1.8.7"
+__version__ = "1.8.8"
 __all__ = [
     # 同步 API (requests)
     "get", "post", "put", "delete", "head", "options", "patch", "request",
@@ -264,4 +279,6 @@ __all__ = [
     "export",
     # 本地代理服务器（双层代理）
     "generate_vless_link", "start_proxy_server", "TwoProxyServer",
+    # Workers 管理器
+    "make_workers", "list_workers", "delete_workers", "WorkersManager",
 ]

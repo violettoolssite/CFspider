@@ -894,6 +894,43 @@ for i in range(5):
     print(response.json()['origin'])  # 每次都是相同的 IP
 ```
 
+### 自动创建 Workers（推荐）
+
+无需手动部署，自动创建和管理 Workers：
+
+```python
+import cfspider
+
+# 创建 Workers（自动部署到 Cloudflare）
+workers = cfspider.make_workers(
+    api_token="your-cloudflare-api-token",  # API Token
+    account_id="your-account-id"             # Account ID
+)
+
+# 直接用于请求（Workers 失效时自动重建）
+response = cfspider.get(
+    "https://httpbin.org/ip",
+    cf_proxies=workers,
+    uuid=workers.uuid
+)
+print(response.json())
+
+# 获取 Workers URL
+print(f"Workers URL: {workers.url}")
+
+# 停止健康检查（程序退出前调用）
+workers.stop()
+```
+
+**获取 API Token：**
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. 右上角头像 → My Profile → API Tokens → Create Token
+3. 选择 "Edit Cloudflare Workers" 模板
+
+**获取 Account ID：**
+1. 进入 Workers & Pages
+2. 右侧边栏可以看到 Account ID
+
 ### 浏览器模式
 
 ```python

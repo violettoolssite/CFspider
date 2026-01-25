@@ -671,7 +671,7 @@ def _request_vless(method, url, cf_proxies, uuid=None,
     Args:
         method: HTTP 方法
         url: 目标 URL
-        cf_proxies: Workers 地址
+        cf_proxies: Workers 地址，支持字符串或 WorkersManager 对象
         uuid: VLESS UUID（可选，不填则自动获取）
         static_ip: 是否使用固定 IP（默认 False）
             - False: 每次请求获取新的出口 IP（适合大规模采集）
@@ -683,6 +683,17 @@ def _request_vless(method, url, cf_proxies, uuid=None,
     """
     from .vless_client import LocalVlessProxy
     import uuid as uuid_mod
+    
+    # 支持 WorkersManager 对象
+    workers_manager = None
+    if hasattr(cf_proxies, 'url') and hasattr(cf_proxies, 'uuid'):
+        # cf_proxies 是 WorkersManager 对象
+        workers_manager = cf_proxies
+        if not uuid and workers_manager.uuid:
+            uuid = workers_manager.uuid
+        cf_proxies = workers_manager.url
+        if not cf_proxies:
+            raise ValueError("WorkersManager 未成功创建 Workers，请检查 API Token 和 Account ID")
     
     # 解析 Workers 地址获取 host
     parsed = urlparse(cf_proxies)
