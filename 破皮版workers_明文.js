@@ -197,6 +197,14 @@ export default {
         const userAgent = request.headers.get('User-Agent') || 'null';
         const upgradeHeader = request.headers.get('Upgrade');
         
+        // 获取原始主机名 (支持 EdgeOne/CDN 回源)
+        // 优先级: 环境变量 > X-Forwarded-Host > Host 头 > url.hostname
+        const originalHost = env.CUSTOM_HOST || env.HOST || 
+                            request.headers.get('X-Forwarded-Host') ||
+                            request.headers.get('X-Original-Host') ||
+                            request.headers.get('Host') ||
+                            url.hostname;
+        
         // 获取管理员密码和加密密钥
         const adminPassword = env.ADMIN || env.admin || env.PASSWORD || env.password || 
                              env.pswd || env.TOKEN || env.KEY || env.UUID || env.uuid || 'cfspider-public';
@@ -268,7 +276,7 @@ export default {
             
             // /x2727admin - 返回加密的密钥提示
             if (path === 'x2727admin') {
-                const fullUrl = `https://${url.hostname}/x2727admin/${accessKey}`;
+                const fullUrl = `https://${originalHost}/x2727admin/${accessKey}`;
                 
                 // 构建提示信息
                 const message = `您的密钥为: ${accessKey}
@@ -316,13 +324,13 @@ ${fullUrl}
                 // 密钥验证通过，返回加密的配置信息
                 const colo = request.cf?.colo || 'UNKNOWN';
                 const vlessPath = '/' + userID + (twoProxy ? '?two_proxy=' + encodeURIComponent(twoProxy) : '');
-                const vlessLink = `vless://${userID}@${url.hostname}:443?security=tls&type=ws&host=${url.hostname}&sni=${url.hostname}&path=${encodeURIComponent(vlessPath)}&encryption=none#Node-${colo}`;
+                const vlessLink = `vless://${userID}@${originalHost}:443?security=tls&type=ws&host=${originalHost}&sni=${originalHost}&path=${encodeURIComponent(vlessPath)}&encryption=none#Node-${colo}`;
                 
                 const configData = {
                     status: 'online',
                     version: '1.8.7',
                     colo: colo,
-                    host: url.hostname,
+                    host: originalHost,
                     uuid: userID,
                     vless: vlessLink,
                     two_proxy: twoProxy || null,
