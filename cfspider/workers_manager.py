@@ -44,10 +44,13 @@ from pathlib import Path
 
 def _get_workers_script() -> str:
     """获取破皮版 Workers 代码"""
-    # 尝试多个可能的路径
+    # 尝试多个可能的路径（按优先级）
     possible_paths = [
-        Path(__file__).parent.parent / "workers" / "破皮版workers.js",
+        # 1. pip 安装后的路径（在 cfspider 包内）
         Path(__file__).parent / "workers" / "破皮版workers.js",
+        # 2. 项目根目录的 workers 文件夹
+        Path(__file__).parent.parent / "workers" / "破皮版workers.js",
+        # 3. 当前工作目录
         Path("workers") / "破皮版workers.js",
         Path("破皮版workers.js"),
     ]
