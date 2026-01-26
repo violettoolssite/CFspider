@@ -111,16 +111,35 @@ print(workers.custom_url)     # 自定义域名 URL
 # 7. 使用解密工具（密钥: 你的密钥）解密获取 VLESS 链接
 ```
 
-**自定义访问密钥：**
+**自定义配置（环境变量）：**
 
-可以通过环境变量设置自定义访问密钥：
-- `ACCESSKEY` - 自定义访问密钥（优先级最高）
-- `ACCESS_KEY` - 自定义访问密钥（备选）
-- `AKEY` - 自定义访问密钥（简写）
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `UUID` | VLESS UUID（必需） | `xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx` |
+| `ACCESSKEY` | 自定义访问密钥（优先级最高） | `mykey123` |
+| `ACCESS_KEY` | 自定义访问密钥（备选） | `mykey123` |
+| `AKEY` | 自定义访问密钥（简写） | `mykey123` |
+| `KEY` | X27CN 加密密钥（可选） | `x27cn2026` |
+| `PROXYIP` | 优选 IP（可选，多个逗号分隔） | `proxyip.fxxk.dedyn.io` |
+| `TWO_PROXY` | 双层代理（可选） | `host:port:user:pass` |
 
-如果不设置环境变量，系统会基于你的 UUID/密码自动生成唯一的8位密钥。
+如果不设置 `ACCESSKEY`/`ACCESS_KEY`/`AKEY`，系统会基于你的 UUID 自动生成唯一的 8 位密钥。
 
 **解密工具：** [https://x27cn.cfspider.com](https://x27cn.cfspider.com)
+
+**完整部署流程：**
+
+```
+1. 注册 Cloudflare 小号（推荐使用临时邮箱）
+2. 创建 Worker，粘贴 workers/破皮版workers.js 代码
+3. 设置环境变量 UUID（必需）和其他可选变量
+4. 部署 Worker，获取 Workers 地址
+5. 访问 https://你的workers地址/ → 看到 Nginx 伪装页面
+6. 访问 https://你的workers地址/x2727admin → 获取加密的密钥提示
+7. 使用 https://x27cn.cfspider.com（密钥: x27cn2026）解密 → 获得访问密钥
+8. 访问 https://你的workers地址/x2727admin/{你的密钥} → 获取加密配置
+9. 使用解密工具（密钥: 你的密钥）解密 → 获取 VLESS 链接和配置
+```
 
 ### Workers 版本对比
 
