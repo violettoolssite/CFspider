@@ -1,14 +1,62 @@
-# CFspider - Cloudflare Workers Spider
+# CFspider - Cloudflare Workers 代理 IP 池 + AI 智能浏览器
 
 [![PyPI version](https://img.shields.io/pypi/v/cfspider)](https://pypi.org/project/cfspider/)
 [![Python](https://img.shields.io/pypi/pyversions/cfspider)](https://pypi.org/project/cfspider/)
 [![License](https://img.shields.io/github/license/violettoolssite/CFspider)](LICENSE)
 
-**v1.9.0** - 基于 Cloudflare Workers 的免费代理 IP 池，支持 **VLESS 协议**（完全隐藏特征）和 **HTTP 代理**（轻量爬虫），利用全球 300+ 边缘节点作为出口，支持隐身模式、TLS 指纹模拟、网页镜像和浏览器自动化。
+**v1.9.0** - Cloudflare Workers 免费代理 IP 池 + AI 驱动的智能浏览器
+
+| 功能 | 说明 |
+|------|------|
+| **代理 IP 池** | VLESS/HTTP 双模式，300+ 全球节点，动态 IP |
+| **智能浏览器** | AI 自然语言控制，真人模拟操作，支持 Ollama/OpenAI/DeepSeek |
+| **一键部署** | API Token 自动创建 Workers，无需手动复制代码 |
 
 ---
 
-## v1.9.0 重大更新：双模式 Workers + 一键自动部署
+## 智能浏览器（NEW）
+
+AI 驱动的桌面浏览器，通过自然语言对话控制浏览器自动化。
+
+**对话示例：**
+```
+用户: 打开京东
+AI: 好的，让我通过搜索引擎找到京东...
+    [跳转 Bing] → [搜索"京东"] → [点击官网链接]
+AI: 已打开京东官网！
+
+用户: 搜索男装
+AI: 正在京东搜索框输入"男装"...
+    [输入文本] → [回车]
+AI: 搜索完成，已显示男装商品列表。
+```
+
+**快速开始：**
+```bash
+cd cfspider-browser
+npm install
+npm run electron:dev
+```
+
+**支持的 AI 服务商：**
+
+| 服务商 | API Key | 推荐模型 |
+|--------|---------|----------|
+| Ollama（本地） | 不需要 | qwen2.5, llama3.2, deepseek-r1 |
+| DeepSeek | 需要 | deepseek-chat, deepseek-reasoner |
+| OpenAI | 需要 | gpt-4o, gpt-4o-mini |
+| Groq | 需要 | llama-3.3-70b-versatile |
+| SiliconFlow | 需要 | deepseek-ai/DeepSeek-V3 |
+| 智谱 AI | 需要 | glm-4-plus |
+| 通义千问 | 需要 | qwen-max |
+
+**支持自定义模型名称**，不限于预设列表。
+
+详细文档：[cfspider-browser/README.md](cfspider-browser/README.md) | [API 文档](https://docs.cfspider.com/smart-browser.html)
+
+---
+
+## 代理 IP 池：双模式 Workers + 一键自动部署
 
 > **无需手动部署！** 只需 API Token 和 Account ID，即可自动创建、部署和管理 Cloudflare Workers。
 > 
@@ -2562,43 +2610,6 @@ CFspider 是一个**技术研究项目**，旨在探索 Cloudflare Workers 边�
 Apache License 2.0
 
 本项目采用 Apache 2.0 许可证。Apache 2.0 许可证已包含免责条款（第7、8条），请仔细阅读 [LICENSE](LICENSE) 文件。
-
-## CFspider 智能浏览器
-
-CFspider 项目现已包含一个 AI 驱动的智能浏览器应用（cfspider-browser），支持通过自然语言对话控制浏览器。
-
-### 核心功能
-
-- **AI 智能助手**：通过自然语言对话控制浏览器，支持多种 AI 模型
-- **真人模拟操作**：AI 像真人一样点击、输入、滚动，完整展示操作过程
-- **虚拟鼠标**：可视化鼠标移动和点击动画
-- **多标签页浏览**：支持新建、关闭、切换标签页
-
-### AI 服务商支持
-
-| 服务商 | 说明 |
-|--------|------|
-| **Ollama** | 本地运行，无需 API Key（推荐） |
-| OpenAI | GPT-4o, GPT-4, GPT-3.5 |
-| DeepSeek | deepseek-chat, deepseek-reasoner |
-| Groq | 超快推理速度 |
-| Moonshot | Kimi 大模型 |
-| 智谱 AI | GLM-4 系列 |
-| 通义千问 | Qwen 系列 |
-| SiliconFlow | 国产模型聚合平台 |
-| 自定义 | 任意 OpenAI 兼容 API |
-
-**支持自定义模型名称**：可直接输入任意模型名称，不限于预设列表。
-
-### 快速开始
-
-```bash
-cd cfspider-browser
-npm install
-npm run electron:dev
-```
-
-详细文档请查看 [cfspider-browser/README.md](cfspider-browser/README.md)
 
 ## 链接
 
