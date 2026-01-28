@@ -2,6 +2,11 @@
   "name": "cfspider-browser",
   "version": "1.0.0",
   "description": "cfspider-智能浏览器 - 可视化爬虫，AI驱动，点击即可爬取",
+  "author": "violettoolssite",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/violettoolssite/CFspider.git"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
