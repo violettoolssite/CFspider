@@ -1,5 +1,6 @@
 import { useStore } from '../store'
-import { matchSkill, updateSkillLearning, type Skill } from './skills'
+import { matchSkill, updateSkillLearning, createSkill, getAllSkills, logOperation, autoExtractSkill, type Skill, type SkillStep } from './skills'
+import { notifyErrorRecovery, notifyTaskComplete } from './heartbeat'
 
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI !== undefined
 
@@ -23,6 +24,33 @@ function getBuiltInKey(): string {
   } catch {
     return ''
   }
+}
+
+// 统一的 AI 调用函数，自动统计 token 消耗
+async function callAIWithTokenTracking(
+  params: {
+    endpoint: string
+    apiKey: string
+    model: string
+    messages: any[]
+    tools?: any[]
+  },
+  tokenType: 'chat' | 'tool' | 'vision' = 'tool'
+): Promise<any> {
+  const response = await (window as any).electronAPI.aiChat(params)
+  
+  // 统计 token 消耗
+  if (response && response.usage) {
+    const store = useStore.getState()
+    store.addTokenUsage(
+      params.model,
+      response.usage.prompt_tokens || 0,
+      response.usage.completion_tokens || 0,
+      tokenType
+    )
+  }
+  
+  return response
 }
 
 // 操作失败时的语气词反应库（包含真实的口语化反应）
@@ -502,7 +530,7 @@ async function analyzePageWithVision(config: VisionConfig): Promise<string> {
     const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
 
     // 调用视觉模型分析 - 输出结构化的页面信息
-    const response = await (window as any).electronAPI.aiChat({
+    const response = await callAIWithTokenTracking({
       endpoint: config.endpoint,
       apiKey: config.apiKey,
       model: config.model,
@@ -555,7 +583,7 @@ async function analyzePageWithVision(config: VisionConfig): Promise<string> {
           ]
         }
       ]
-    })
+    }, 'vision')
 
     if (response.content) {
       return response.content
@@ -597,7 +625,7 @@ async function visualLocateElement(
     
     const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
 
-    const response = await (window as any).electronAPI.aiChat({
+    const response = await callAIWithTokenTracking({
       endpoint: visionConfig.endpoint,
       apiKey: visionConfig.apiKey,
       model: visionConfig.model,
@@ -720,7 +748,7 @@ async function quickVisualFeedback(
     const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
 
     // 使用简化的提示词快速分析
-    const response = await (window as any).electronAPI.aiChat({
+    const response = await callAIWithTokenTracking({
       endpoint: visionConfig.endpoint,
       apiKey: visionConfig.apiKey,
       model: visionConfig.model,
@@ -901,6 +929,25 @@ export const aiTools = [
         type: 'object',
         properties: {
           index: { type: 'number', description: '要关闭的标签页索引（可选，不提供则关闭当前标签页）' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'close_popup',
+      description: '关闭页面上的弹窗、模态框、广告遮罩等。会尝试多种方法：点击关闭按钮、按ESC、点击遮罩层外部等。',
+      parameters: {
+        type: 'object',
+        properties: {
+          method: { 
+            type: 'string', 
+            enum: ['auto', 'click_close', 'press_escape', 'click_outside', 'specific_selector'],
+            description: '关闭方法：auto(自动尝试所有方法)、click_close(点击关闭按钮)、press_escape(按ESC键)、click_outside(点击外部)、specific_selector(使用指定选择器)' 
+          },
+          selector: { type: 'string', description: '当method为specific_selector时，指定要点击的关闭按钮选择器' },
+          max_attempts: { type: 'number', description: '最大尝试次数，默认3次' }
         }
       }
     }
@@ -1330,6 +1377,527 @@ export const aiTools = [
         }
       }
     }
+  },
+  // ==================== 自我扩展工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'create_skill',
+      description: '创建新技能。当发现某个操作序列可以复用时，AI 可以主动创建技能。技能会永久保存，下次可以直接使用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { 
+            type: 'string', 
+            description: '技能名称，如"京东搜索商品"' 
+          },
+          description: { 
+            type: 'string', 
+            description: '技能描述，说明这个技能能做什么' 
+          },
+          triggers: { 
+            type: 'array', 
+            items: { type: 'string' },
+            description: '触发词列表，如["搜索商品", "找商品", "查商品"]' 
+          },
+          domains: { 
+            type: 'array', 
+            items: { type: 'string' },
+            description: '适用的域名列表，如["jd.com"]。空数组表示通用技能' 
+          },
+          steps: { 
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                action: { type: 'string', description: '动作类型: click, input, scroll, wait, navigate, scan, verify' },
+                target: { type: 'string', description: 'CSS选择器或元素描述' },
+                value: { type: 'string', description: '输入值或参数' }
+              }
+            },
+            description: '操作步骤列表' 
+          }
+        },
+        required: ['name', 'triggers', 'steps']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_skills',
+      description: '列出所有已学习的技能，包括内置技能和自定义技能。',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  // ==================== 系统操作工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'run_app',
+      description: '运行用户电脑上的本地应用程序。支持常见应用如：bilibili(B站客户端)、wechat(微信)、qq、vscode、chrome、edge、potplayer(视频播放器)、qqmusic(QQ音乐)、word、excel等。注意：当用户明确说要打开"客户端"时，只尝试本地应用，找不到就告知用户，不要自动切换到浏览器！',
+      parameters: {
+        type: 'object',
+        properties: {
+          app_name: {
+            type: 'string',
+            description: '应用名称，如 bilibili、wechat、vscode、chrome、potplayer 等'
+          },
+          path: {
+            type: 'string',
+            description: '可选，应用程序的完整路径。如果提供了 app_name 则不需要'
+          },
+          args: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '可选，传递给应用的命令行参数。例如视频播放器打开视频时可传入视频路径'
+          }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'open_url',
+      description: '使用系统默认浏览器打开网址。只有当用户明确要求在浏览器中打开时才使用，不要作为找不到客户端的替代方案！',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: '要打开的网址URL'
+          }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_app',
+      description: '检查用户电脑是否安装了某个应用程序。',
+      parameters: {
+        type: 'object',
+        properties: {
+          app_name: {
+            type: 'string',
+            description: '要检查的应用名称，如 bilibili、wechat、vscode、potplayer 等'
+          }
+        },
+        required: ['app_name']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_installed_apps',
+      description: '列出用户电脑上已安装的常见应用程序。',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'open_file',
+      description: '使用系统默认程序打开文件或文件夹。视频文件会自动播放，文档会用对应程序打开。',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: '文件或文件夹的完整路径'
+          }
+        },
+        required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_command',
+      description: '运行系统命令（Windows CMD/PowerShell）。用于执行简单的系统操作。危险命令会被阻止。',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: '要执行的命令，如 dir、echo、start 等'
+          },
+          cwd: {
+            type: 'string',
+            description: '可选，命令执行的工作目录'
+          }
+        },
+        required: ['command']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_system_info',
+      description: '获取用户电脑的系统信息，包括操作系统、用户名、主目录等。',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  // ==================== 键盘鼠标模拟工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'type_text',
+      description: '模拟键盘逐字输入文本，像真人打字一样。可用于在任何程序中输入文字。',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description: '要输入的文本内容'
+          },
+          delay: {
+            type: 'number',
+            description: '每个字符之间的延迟（毫秒），默认50ms。设为0则快速输入'
+          }
+        },
+        required: ['text']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'press_key',
+      description: '按下特定按键或组合键。支持：enter, tab, escape, backspace, delete, 方向键(up/down/left/right), F1-F12, 以及组合键如 ctrl+s, alt+f4, ctrl+shift+s 等',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: {
+            type: 'string',
+            description: '按键名称。单键如: enter, tab, escape, f5。组合键如: ctrl+s, alt+f4, ctrl+shift+n'
+          }
+        },
+        required: ['key']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mouse_click',
+      description: '在屏幕指定坐标位置点击鼠标。可用于操作桌面应用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: '屏幕X坐标' },
+          y: { type: 'number', description: '屏幕Y坐标' },
+          button: { 
+            type: 'string', 
+            enum: ['left', 'right', 'middle'],
+            description: '鼠标按键，默认left' 
+          },
+          clicks: { 
+            type: 'number', 
+            description: '点击次数，1=单击，2=双击，默认1' 
+          }
+        },
+        required: ['x', 'y']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mouse_move',
+      description: '移动鼠标到屏幕指定位置',
+      parameters: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: '目标X坐标' },
+          y: { type: 'number', description: '目标Y坐标' },
+          smooth: { type: 'boolean', description: '是否平滑移动（像真人），默认true' }
+        },
+        required: ['x', 'y']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mouse_drag',
+      description: '鼠标拖拽操作，从一个位置拖动到另一个位置',
+      parameters: {
+        type: 'object',
+        properties: {
+          from_x: { type: 'number', description: '起始X坐标' },
+          from_y: { type: 'number', description: '起始Y坐标' },
+          to_x: { type: 'number', description: '目标X坐标' },
+          to_y: { type: 'number', description: '目标Y坐标' }
+        },
+        required: ['from_x', 'from_y', 'to_x', 'to_y']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'focus_window',
+      description: '激活/聚焦指定窗口，使其显示在最前面',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '窗口标题（模糊匹配）' },
+          process: { type: 'string', description: '进程名称，如 notepad, chrome 等' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_mouse_position',
+      description: '获取当前鼠标在屏幕上的位置',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  // ==================== 剪贴板工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'read_clipboard',
+      description: '读取剪贴板内容（文本、图片或HTML）',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write_clipboard',
+      description: '写入内容到剪贴板',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: '要写入的文本内容' }
+        },
+        required: ['text']
+      }
+    }
+  },
+  // ==================== 系统通知工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'send_notification',
+      description: '发送桌面通知提醒用户',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '通知标题' },
+          body: { type: 'string', description: '通知内容' },
+          silent: { type: 'boolean', description: '是否静音，默认false' }
+        },
+        required: ['title', 'body']
+      }
+    }
+  },
+  // ==================== 文件系统工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'read_file',
+      description: '读取文件内容',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径，支持环境变量如 %USERPROFILE%' }
+        },
+        required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write_file',
+      description: '写入内容到文件。可选择直接写入或使用"记事本打字模式"（打开记事本逐字输入）',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '文件路径' },
+          content: { type: 'string', description: '要写入的内容' },
+          typing_mode: { type: 'boolean', description: '是否使用记事本打字模式（打开记事本逐字输入），默认false' }
+        },
+        required: ['path', 'content']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_directory',
+      description: '列出目录中的文件和文件夹',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '目录路径' }
+        },
+        required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_files',
+      description: '在目录中搜索文件（支持通配符如 *.txt）',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '搜索的目录路径' },
+          pattern: { type: 'string', description: '搜索模式，如 *.txt, *.jpg, report*' }
+        },
+        required: ['path', 'pattern']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_file',
+      description: '删除文件或文件夹',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: '要删除的文件/文件夹路径' },
+          recursive: { type: 'boolean', description: '是否递归删除文件夹内容，默认false' }
+        },
+        required: ['path']
+      }
+    }
+  },
+  // ==================== 进程管理工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'list_processes',
+      description: '列出当前运行的所有进程',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'kill_process',
+      description: '结束指定的进程',
+      parameters: {
+        type: 'object',
+        properties: {
+          pid: { type: 'number', description: '进程ID' },
+          name: { type: 'string', description: '进程名称，如 notepad.exe' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_system_usage',
+      description: '获取系统资源使用情况（CPU和内存）',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  // ==================== 屏幕截图工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'capture_screen',
+      description: '截取整个屏幕',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_all_windows',
+      description: '列出所有可见窗口',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'capture_window',
+      description: '截取指定窗口',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: '窗口名称（模糊匹配）' }
+        },
+        required: ['name']
+      }
+    }
+  },
+  // ==================== 定时任务工具 ====================
+  {
+    type: 'function',
+    function: {
+      name: 'create_reminder',
+      description: '创建一个提醒，在指定时间后发送桌面通知',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '提醒标题' },
+          message: { type: 'string', description: '提醒内容' },
+          delay_minutes: { type: 'number', description: '延迟时间（分钟）' }
+        },
+        required: ['title', 'message', 'delay_minutes']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_scheduled_task',
+      description: '创建定时任务，在指定时间执行并可设置重复',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '任务标题' },
+          message: { type: 'string', description: '任务内容/提醒消息' },
+          time: { type: 'string', description: '触发时间，可以是 HH:MM 格式（如 09:30）或 ISO 格式' },
+          repeat: { 
+            type: 'string', 
+            enum: ['none', 'hourly', 'daily', 'weekly'],
+            description: '重复频率，默认 none' 
+          }
+        },
+        required: ['title', 'message', 'time']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_scheduled_tasks',
+      description: '列出所有定时任务和提醒',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_scheduled_task',
+      description: '取消指定的定时任务',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '任务ID' }
+        },
+        required: ['id']
+      }
+    }
   }
 ]
 
@@ -1415,6 +1983,198 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
         return '未找到要关闭的标签页'
       } catch (e) {
         return 'Failed to close tab: ' + e
+      }
+    }
+
+    case 'close_popup': {
+      try {
+        const webview = document.querySelector('webview') as any
+        if (!webview) {
+          return '无法找到 webview'
+        }
+        
+        const method = (args.method as string) || 'auto'
+        const customSelector = args.selector as string
+        const maxAttempts = (args.max_attempts as number) || 3
+        
+        // 定义所有关闭选择器（按优先级排列）
+        const closeSelectors = [
+          // 通用关闭按钮
+          '.close', '.close-btn', '.btn-close', '.icon-close', '.close-icon',
+          '[class*="close"]', '[aria-label="关闭"]', '[aria-label="Close"]',
+          '[title="关闭"]', '[title="Close"]', '.modal-close', '.dialog-close',
+          
+          // 淘宝专用
+          '.fm-btn-close', '.login-box .close', '.J_CloseLogin', '.sufei-dialog-close',
+          '.baxia-dialog-close', '.next-dialog-close', '.next-icon-close',
+          
+          // 京东专用  
+          '.modal-close', '.jd-close', '.JDJRV-bigimg .close',
+          
+          // Bilibili专用
+          '.bili-mini-close', '.bili-popup-close', '.close-container',
+          '.bili-modal__close', '.bpx-player-ending-panel-close',
+          
+          // 腾讯视频专用
+          '.popup_close', '.dialog_close', '.mod_popup .close', '.btn_close',
+          '.player_close', '.txp_popup_close',
+          
+          // GitHub专用
+          '.js-cookie-consent-accept', '.Box-overlay-close', '.flash-close',
+          
+          // 微博/微信等
+          '.woo-dialog-close', '.weui-dialog__btn', '.W_close',
+          
+          // 常见广告关闭
+          '.ad-close', '.ad-skip', '.skip-ad', '[class*="ad"] .close',
+          '.advertisement-close', '.ads-close',
+          
+          // 遮罩层/模态框背景
+          '.modal-backdrop', '.overlay', '.mask', '.modal-mask',
+          '.dialog-overlay', '.popup-overlay'
+        ]
+        
+        let attempts = 0
+        let closed = false
+        let closeMethod = ''
+        
+        const tryClose = async (selectors: string[], description: string): Promise<boolean> => {
+          const result = await webview.executeJavaScript(`
+            (function() {
+              const selectors = ${JSON.stringify(selectors)};
+              for (const sel of selectors) {
+                try {
+                  const elements = document.querySelectorAll(sel);
+                  for (const el of elements) {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    // 确保元素可见且可点击
+                    if (style.display !== 'none' && style.visibility !== 'hidden' &&
+                        parseFloat(style.opacity) > 0 && rect.width > 0 && rect.height > 0) {
+                      el.click();
+                      return { success: true, selector: sel };
+                    }
+                  }
+                } catch (e) {}
+              }
+              return { success: false };
+            })()
+          `)
+          if (result.success) {
+            closeMethod = `${description}: ${result.selector}`
+            return true
+          }
+          return false
+        }
+        
+        // 根据方法执行关闭
+        while (attempts < maxAttempts && !closed) {
+          attempts++
+          
+          if (method === 'auto' || method === 'click_close') {
+            // 如果有自定义选择器，优先使用
+            if (customSelector) {
+              closed = await tryClose([customSelector], '自定义选择器')
+            }
+            if (!closed) {
+              closed = await tryClose(closeSelectors, '点击关闭按钮')
+            }
+          }
+          
+          if (!closed && (method === 'auto' || method === 'press_escape')) {
+            // 按 ESC 键
+            await webview.executeJavaScript(`
+              document.dispatchEvent(new KeyboardEvent('keydown', { 
+                key: 'Escape', 
+                keyCode: 27, 
+                code: 'Escape',
+                bubbles: true 
+              }));
+              document.body.dispatchEvent(new KeyboardEvent('keydown', { 
+                key: 'Escape', 
+                keyCode: 27,
+                code: 'Escape', 
+                bubbles: true 
+              }));
+            `)
+            await new Promise(resolve => setTimeout(resolve, 300))
+            
+            // 检查是否关闭成功
+            const stillHasPopup = await webview.executeJavaScript(`
+              (function() {
+                const modals = document.querySelectorAll('.modal, .popup, .dialog, [role="dialog"], .overlay');
+                for (const m of modals) {
+                  const style = window.getComputedStyle(m);
+                  if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    return true;
+                  }
+                }
+                return false;
+              })()
+            `)
+            if (!stillHasPopup) {
+              closed = true
+              closeMethod = '按 ESC 键'
+            }
+          }
+          
+          if (!closed && (method === 'auto' || method === 'click_outside')) {
+            // 点击页面角落（避开弹窗）
+            await webview.executeJavaScript(`
+              document.body.click();
+              document.documentElement.click();
+            `)
+            await new Promise(resolve => setTimeout(resolve, 300))
+            closeMethod = '点击外部区域'
+          }
+          
+          if (!closed && method === 'specific_selector' && customSelector) {
+            closed = await tryClose([customSelector], '指定选择器')
+          }
+          
+          // 等待一下再尝试
+          if (!closed && attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        }
+        
+        if (closed) {
+          return `弹窗已关闭 (${closeMethod})，尝试次数: ${attempts}`
+        } else {
+          // 返回页面上可能的弹窗信息帮助调试
+          const popupInfo = await webview.executeJavaScript(`
+            (function() {
+              const infos = [];
+              // 查找可能的弹窗元素
+              const selectors = ['.modal', '.popup', '.dialog', '[role="dialog"]', '.overlay', '.mask', 
+                                 '[class*="login"]', '[class*="modal"]', '[class*="popup"]', '[class*="dialog"]'];
+              for (const sel of selectors) {
+                const els = document.querySelectorAll(sel);
+                for (const el of els) {
+                  const style = window.getComputedStyle(el);
+                  if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    const classes = el.className || '';
+                    const id = el.id || '';
+                    infos.push({ selector: sel, classes: classes.substring(0, 100), id: id });
+                  }
+                }
+              }
+              return infos.slice(0, 5);
+            })()
+          `)
+          
+          let debugInfo = ''
+          if (popupInfo && popupInfo.length > 0) {
+            debugInfo = '\n\n检测到的弹窗元素:\n' + popupInfo.map((p: any) => 
+              `- 选择器: ${p.selector}, ID: ${p.id || '无'}, 类名: ${p.classes || '无'}`
+            ).join('\n')
+            debugInfo += '\n\n建议: 使用 close_popup(method="specific_selector", selector="...") 指定具体选择器'
+          }
+          
+          return `关闭弹窗失败，已尝试 ${attempts} 次${debugInfo}`
+        }
+      } catch (e) {
+        return 'Failed to close popup: ' + e
       }
     }
 
@@ -2733,7 +3493,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
               const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
               console.log('[CFSpider] read_full_page 视觉分析第', i + 1, '屏')
               
-              const response = await (window as any).electronAPI.aiChat({
+              const response = await callAIWithTokenTracking({
                 endpoint: BUILT_IN_AI.endpoint,
                 apiKey: getBuiltInKey(),
                 model: BUILT_IN_AI.visionModel,
@@ -2744,7 +3504,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
                     { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
                   ]
                 }]
-              })
+              }, 'vision')
               
               if (response.content) {
                 allContents.push(`=== 第 ${i + 1} 屏 ===\n${response.content}`)
@@ -2816,7 +3576,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
         // 如果没有指定类型，先自动检测验证码类型
         let detectedType = captchaType
         if (!captchaType || captchaType === 'auto') {
-          const detectResponse = await (window as any).electronAPI.aiChat({
+          const detectResponse = await callAIWithTokenTracking({
             endpoint: BUILT_IN_AI.endpoint,
             apiKey: getBuiltInKey(),
             model: BUILT_IN_AI.visionModel,
@@ -2840,7 +3600,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
                 { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
               ]
             }]
-          })
+          }, 'vision')
           
           const detectResult = detectResponse.content || ''
           console.log('[CFSpider] 验证码检测结果:', detectResult)
@@ -2899,7 +3659,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
             break
         }
 
-        const response = await (window as any).electronAPI.aiChat({
+        const response = await callAIWithTokenTracking({
           endpoint: BUILT_IN_AI.endpoint,
           apiKey: getBuiltInKey(),
           model: BUILT_IN_AI.visionModel,
@@ -2910,7 +3670,7 @@ async function executeToolCall(name: string, args: Record<string, unknown>): Pro
               { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
             ]
           }]
-        })
+        }, 'vision')
 
         store.setCurrentModelType(null)
         
@@ -2970,7 +3730,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
         
         const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
         
-        const response = await (window as any).electronAPI.aiChat({
+        const response = await callAIWithTokenTracking({
           endpoint: BUILT_IN_AI.endpoint,
           apiKey: getBuiltInKey(),
           model: BUILT_IN_AI.visionModel,
@@ -2981,7 +3741,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
               { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
             ]
           }]
-        })
+        }, 'vision')
         
         store.setCurrentModelType(null)
         return response.content || 'Failed to analyze image'
@@ -3114,7 +3874,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
           store.setCurrentModelType('vision')
           
           // 让视觉模型比较两张截图
-          const response = await (window as any).electronAPI.aiChat({
+          const response = await callAIWithTokenTracking({
             endpoint: BUILT_IN_AI.endpoint,
             apiKey: getBuiltInKey(),
             model: BUILT_IN_AI.visionModel,
@@ -3134,7 +3894,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
                 ]
               }
             ]
-          })
+          }, 'vision')
           
           store.setCurrentModelType(null)
           return response.content || 'Failed to compare screenshots'
@@ -3183,7 +3943,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
 
 如果是折线图或趋势图，请描述趋势变化。`
         
-        const response = await (window as any).electronAPI.aiChat({
+        const response = await callAIWithTokenTracking({
           endpoint: BUILT_IN_AI.endpoint,
           apiKey: getBuiltInKey(),
           model: BUILT_IN_AI.visionModel,
@@ -3194,7 +3954,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
               { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
             ]
           }]
-        })
+        }, 'vision')
         
         store.setCurrentModelType(null)
         return response.content || 'Failed to extract chart data'
@@ -3233,7 +3993,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
         
         const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
         
-        const response = await (window as any).electronAPI.aiChat({
+        const response = await callAIWithTokenTracking({
           endpoint: BUILT_IN_AI.endpoint,
           apiKey: getBuiltInKey(),
           model: BUILT_IN_AI.visionModel,
@@ -3244,7 +4004,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
               { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
             ]
           }]
-        })
+        }, 'vision')
         
         store.setCurrentModelType(null)
         return response.content || 'Failed to extract text from image'
@@ -4709,7 +5469,7 @@ ${detectedType === 'click' ? '1. 按顺序使用 click_element 或 visual_click 
             
             const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
             
-            const response = await (window as any).electronAPI.aiChat({
+            const response = await callAIWithTokenTracking({
               endpoint: BUILT_IN_AI.endpoint,
               apiKey: getBuiltInKey(),
               model: BUILT_IN_AI.visionModel,
@@ -4731,7 +5491,7 @@ ${focus ? `重点关注：${focus}` : ''}
                   { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
                 ]
               }]
-            })
+            }, 'vision')
             
             if (response.content) {
               frameAnalyses.push(`帧${i + 1}: ${response.content}`)
@@ -4755,7 +5515,7 @@ ${focus ? `重点关注：${focus}` : ''}
           
           if (frameAnalyses.length > 1) {
             // 请求生成整体总结
-            const summaryResponse = await (window as any).electronAPI.aiChat({
+            const summaryResponse = await callAIWithTokenTracking({
               endpoint: useBuiltInVideo ? BUILT_IN_AI.endpoint : videoConfig.endpoint,
               apiKey: useBuiltInVideo ? getBuiltInKey() : videoConfig.apiKey,
               model: useBuiltInVideo ? BUILT_IN_AI.model : videoConfig.model,
@@ -4821,7 +5581,7 @@ ${focus ? `重点关注：${focus}` : ''}
             const timeStr = `${Math.floor(targetTime / 60)}:${String(Math.floor(targetTime % 60)).padStart(2, '0')}`
             
             // 分析帧内容
-            const response = await (window as any).electronAPI.aiChat({
+            const response = await callAIWithTokenTracking({
               endpoint: BUILT_IN_AI.endpoint,
               apiKey: getBuiltInKey(),
               model: BUILT_IN_AI.visionModel,
@@ -4835,7 +5595,7 @@ ${focus ? `重点关注：${focus}` : ''}
                   { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
                 ]
               }]
-            })
+            }, 'vision')
             
             if (response.content) {
               frameAnalyses.push(`[${timeStr}] ${response.content}`)
@@ -4871,7 +5631,7 @@ ${focus ? `重点关注：${focus}` : ''}
         
         // 生成整体总结
         if (frameAnalyses.length > 2) {
-          const summaryResponse = await (window as any).electronAPI.aiChat({
+          const summaryResponse = await callAIWithTokenTracking({
             endpoint: useBuiltInVideo ? BUILT_IN_AI.endpoint : videoConfig.endpoint,
             apiKey: useBuiltInVideo ? getBuiltInKey() : videoConfig.apiKey,
             model: useBuiltInVideo ? BUILT_IN_AI.model : videoConfig.model,
@@ -4891,6 +5651,750 @@ ${focus ? `重点关注：${focus}` : ''}
         store.setCurrentModelType(null)
         console.error('[CFSpider] 视频分析失败:', e)
         return `视频分析失败: ${e}`
+      }
+    }
+
+    // ==================== 自我扩展工具 ====================
+    case 'create_skill': {
+      try {
+        const name = args.name as string
+        const description = (args.description as string) || `自动创建的技能: ${name}`
+        const triggers = args.triggers as string[]
+        const domains = (args.domains as string[]) || []
+        const stepsInput = args.steps as Array<{ action: string; target?: string; value?: string }>
+        
+        if (!name || !triggers || !stepsInput) {
+          return '创建技能失败: 缺少必要参数 (name, triggers, steps)'
+        }
+        
+        // 转换步骤格式
+        const steps: SkillStep[] = stepsInput.map(s => ({
+          action: s.action as any,
+          target: s.target,
+          value: s.value
+        }))
+        
+        // 创建技能
+        const skill = await createSkill(name, description, triggers, domains, steps)
+        
+        console.log('[CFSpider] AI 自动创建技能:', skill.name, skill.id)
+        
+        return `技能创建成功~
+名称: ${skill.name}
+ID: ${skill.id}
+触发词: ${skill.triggers.join(', ')}
+适用域名: ${skill.domains.length > 0 ? skill.domains.join(', ') : '通用'}
+步骤数: ${skill.steps.length}
+
+这个技能已经永久保存，下次你说"${skill.triggers[0]}"时我就会自动使用它。`
+      } catch (e) {
+        console.error('[CFSpider] 创建技能失败:', e)
+        return `创建技能失败: ${e}`
+      }
+    }
+
+    case 'list_skills': {
+      try {
+        const skills = await getAllSkills()
+        
+        if (skills.length === 0) {
+          return '当前没有任何技能。'
+        }
+        
+        const builtIn = skills.filter(s => s.isBuiltIn)
+        const userSkills = skills.filter(s => !s.isBuiltIn)
+        
+        let result = `[技能列表] 共 ${skills.length} 个技能\n\n`
+        
+        if (builtIn.length > 0) {
+          result += `== 内置技能 (${builtIn.length}) ==\n`
+          for (const skill of builtIn) {
+            const proficiency = skill.usageCount < 5 ? '新手' :
+                               skill.usageCount < 20 ? '入门' :
+                               skill.usageCount < 50 ? '熟练' :
+                               skill.usageCount < 100 ? '精通' : '大师'
+            result += `- ${skill.name} (${proficiency}, 成功率${skill.successRate}%, 使用${skill.usageCount}次)\n`
+            result += `  触发词: ${skill.triggers.slice(0, 3).join(', ')}\n`
+          }
+        }
+        
+        if (userSkills.length > 0) {
+          result += `\n== 学习的技能 (${userSkills.length}) ==\n`
+          for (const skill of userSkills) {
+            result += `- ${skill.name} (成功率${skill.successRate}%, 使用${skill.usageCount}次)\n`
+            result += `  触发词: ${skill.triggers.slice(0, 3).join(', ')}\n`
+          }
+        }
+        
+        return result
+      } catch (e) {
+        return `获取技能列表失败: ${e}`
+      }
+    }
+
+    // ==================== 系统操作工具 ====================
+    
+    case 'run_app': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const appName = args.app_name as string
+        const path = args.path as string
+        const appArgs = args.args as string[]
+        
+        // 先检查应用是否安装
+        if (appName && !path) {
+          const checkResult = await (window as any).electronAPI.checkApp(appName)
+          if (!checkResult.installed) {
+            return 'NOT_INSTALLED: App "' + appName + '" is not installed on this computer. Please ask user if they want to open the website version instead, or install the app first.'
+          }
+        }
+        
+        const result = await (window as any).electronAPI.runApp({
+          appName,
+          path,
+          args: appArgs
+        })
+        
+        if (result.success) {
+          return 'App launched successfully: ' + (appName || path)
+        } else {
+          return 'Failed to launch: ' + result.error
+        }
+      } catch (e) {
+        return 'Error launching app: ' + e
+      }
+    }
+    
+    case 'open_url': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const url = args.url as string
+        const result = await (window as any).electronAPI.runApp({ url })
+        
+        if (result.success) {
+          return 'URL opened in default browser: ' + url
+        } else {
+          return 'Failed to open URL: ' + result.error
+        }
+      } catch (e) {
+        return 'Error opening URL: ' + e
+      }
+    }
+    
+    case 'check_app': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const appName = args.app_name as string
+        const result = await (window as any).electronAPI.checkApp(appName)
+        
+        if (result.installed) {
+          return 'App "' + appName + '" is installed at: ' + result.path
+        } else {
+          return 'App "' + appName + '" is NOT installed on this computer'
+        }
+      } catch (e) {
+        return 'Error checking app: ' + e
+      }
+    }
+    
+    case 'list_installed_apps': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const apps = await (window as any).electronAPI.listApps()
+        
+        if (apps.length === 0) {
+          return 'No common apps detected. You can still try running specific apps by name.'
+        }
+        
+        let result = '[Installed Apps]\n'
+        const categories: Record<string, string[]> = {
+          'Browsers': ['chrome', 'edge', 'firefox'],
+          'Media': ['bilibili', 'potplayer', 'vlc', 'qqmusic', 'neteasemusic'],
+          'Social': ['wechat', 'qq', 'dingtalk', 'telegram'],
+          'Development': ['vscode', 'cursor', 'idea', 'pycharm'],
+          'Office': ['word', 'excel', 'powerpoint', 'notepad']
+        }
+        
+        for (const [category, appNames] of Object.entries(categories)) {
+          const found = apps.filter((a: {name: string}) => appNames.includes(a.name))
+          if (found.length > 0) {
+            result += '\n' + category + ':\n'
+            for (const app of found) {
+              result += '  - ' + app.name + '\n'
+            }
+          }
+        }
+        
+        return result
+      } catch (e) {
+        return 'Error listing apps: ' + e
+      }
+    }
+    
+    case 'open_file': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const path = args.path as string
+        const result = await (window as any).electronAPI.openPath(path)
+        
+        if (result.success) {
+          return 'Opened: ' + path + ' (video files will auto-play)'
+        } else {
+          return 'Failed to open: ' + result.error
+        }
+      } catch (e) {
+        return 'Error opening file: ' + e
+      }
+    }
+    
+    case 'run_command': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const command = args.command as string
+        const cwd = args.cwd as string
+        
+        const result = await (window as any).electronAPI.runCommand({ command, cwd })
+        
+        if (result.success) {
+          let output = 'Command executed successfully'
+          if (result.stdout) {
+            output += '\n\nOutput:\n' + result.stdout
+          }
+          if (result.stderr) {
+            output += '\n\nStderr:\n' + result.stderr
+          }
+          return output
+        } else {
+          return 'Command failed: ' + result.error + (result.stderr ? '\n' + result.stderr : '')
+        }
+      } catch (e) {
+        return 'Error running command: ' + e
+      }
+    }
+    
+    case 'get_system_info': {
+      if (!isElectron) {
+        return 'System operations only available in desktop app'
+      }
+      try {
+        const info = await (window as any).electronAPI.getSystemInfo()
+        
+        return '[System Info]\n' +
+          'OS: ' + info.platform + ' (' + info.arch + ')\n' +
+          'User: ' + info.username + '\n' +
+          'Computer: ' + info.hostname + '\n' +
+          'Home: ' + info.homedir + '\n' +
+          'CPUs: ' + info.cpus + ' cores\n' +
+          'Memory: ' + Math.round(info.memory.free / 1024 / 1024 / 1024) + 'GB free / ' + 
+                       Math.round(info.memory.total / 1024 / 1024 / 1024) + 'GB total'
+      } catch (e) {
+        return 'Error getting system info: ' + e
+      }
+    }
+
+    // ==================== 键盘鼠标模拟工具 ====================
+    
+    case 'type_text': {
+      if (!isElectron) {
+        return 'Keyboard simulation only available in desktop app'
+      }
+      try {
+        const text = args.text as string
+        const delay = (args.delay as number) || 50
+        
+        const result = await (window as any).electronAPI.typeText({ text, delay })
+        
+        if (result.success) {
+          return 'Typed ' + result.typed + ' characters successfully'
+        } else {
+          return 'Type failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error typing text: ' + e
+      }
+    }
+    
+    case 'press_key': {
+      if (!isElectron) {
+        return 'Keyboard simulation only available in desktop app'
+      }
+      try {
+        const key = args.key as string
+        
+        const result = await (window as any).electronAPI.pressKey({ key })
+        
+        if (result.success) {
+          return 'Pressed key: ' + result.key
+        } else {
+          return 'Key press failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error pressing key: ' + e
+      }
+    }
+    
+    case 'mouse_click': {
+      if (!isElectron) {
+        return 'Mouse simulation only available in desktop app'
+      }
+      try {
+        const x = args.x as number
+        const y = args.y as number
+        const button = (args.button as string) || 'left'
+        const clicks = (args.clicks as number) || 1
+        
+        const result = await (window as any).electronAPI.mouseClick({ x, y, button, clicks })
+        
+        if (result.success) {
+          return 'Clicked at (' + x + ', ' + y + ') with ' + button + ' button' + (clicks > 1 ? ' x' + clicks : '')
+        } else {
+          return 'Mouse click failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error clicking mouse: ' + e
+      }
+    }
+    
+    case 'mouse_move': {
+      if (!isElectron) {
+        return 'Mouse simulation only available in desktop app'
+      }
+      try {
+        const x = args.x as number
+        const y = args.y as number
+        const smooth = args.smooth !== false
+        
+        const result = await (window as any).electronAPI.mouseMove({ x, y, smooth })
+        
+        if (result.success) {
+          return 'Moved mouse to (' + x + ', ' + y + ')'
+        } else {
+          return 'Mouse move failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error moving mouse: ' + e
+      }
+    }
+    
+    case 'mouse_drag': {
+      if (!isElectron) {
+        return 'Mouse simulation only available in desktop app'
+      }
+      try {
+        const fromX = args.from_x as number
+        const fromY = args.from_y as number
+        const toX = args.to_x as number
+        const toY = args.to_y as number
+        
+        const result = await (window as any).electronAPI.mouseDrag({ fromX, fromY, toX, toY })
+        
+        if (result.success) {
+          return 'Dragged from (' + fromX + ', ' + fromY + ') to (' + toX + ', ' + toY + ')'
+        } else {
+          return 'Mouse drag failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error dragging mouse: ' + e
+      }
+    }
+    
+    case 'focus_window': {
+      if (!isElectron) {
+        return 'Window operations only available in desktop app'
+      }
+      try {
+        const title = args.title as string
+        const process = args.process as string
+        
+        if (!title && !process) {
+          return 'Must provide window title or process name'
+        }
+        
+        const result = await (window as any).electronAPI.focusWindow({ title, process })
+        
+        if (result.success) {
+          return 'Window focused: ' + result.message
+        } else {
+          return 'Focus window failed: ' + (result.error || result.message)
+        }
+      } catch (e) {
+        return 'Error focusing window: ' + e
+      }
+    }
+    
+    case 'get_mouse_position': {
+      if (!isElectron) {
+        return 'Mouse operations only available in desktop app'
+      }
+      try {
+        const result = await (window as any).electronAPI.getMousePos()
+        
+        if (result.success) {
+          return 'Mouse position: (' + result.x + ', ' + result.y + ')'
+        } else {
+          return 'Get mouse position failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error getting mouse position: ' + e
+      }
+    }
+
+    // ==================== 剪贴板工具 ====================
+    
+    case 'read_clipboard': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const result = await (window as any).electronAPI.readClipboard()
+        if (result.success) {
+          if (result.type === 'empty') {
+            return 'Clipboard is empty'
+          } else if (result.type === 'image') {
+            return 'Clipboard contains an image (' + result.size?.width + 'x' + result.size?.height + ')'
+          } else {
+            return 'Clipboard content (' + result.type + '):\n' + (result.content?.slice(0, 2000) || '')
+          }
+        }
+        return 'Read clipboard failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'write_clipboard': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const text = args.text as string
+        const result = await (window as any).electronAPI.writeClipboard({ text })
+        if (result.success) {
+          return 'Written to clipboard: ' + text.slice(0, 100) + (text.length > 100 ? '...' : '')
+        }
+        return 'Write clipboard failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+
+    // ==================== 系统通知工具 ====================
+    
+    case 'send_notification': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const title = args.title as string
+        const body = args.body as string
+        const silent = args.silent as boolean
+        
+        const result = await (window as any).electronAPI.sendNotification({ title, body, silent })
+        if (result.success) {
+          return 'Notification sent: ' + title
+        }
+        return 'Send notification failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+
+    // ==================== 文件系统工具 ====================
+    
+    case 'read_file': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const path = args.path as string
+        const result = await (window as any).electronAPI.fsReadFile({ path })
+        if (result.success) {
+          const content = result.content || ''
+          if (content.length > 5000) {
+            return 'File content (truncated to 5000 chars):\n' + content.slice(0, 5000) + '\n...[truncated]'
+          }
+          return 'File content:\n' + content
+        }
+        return 'Read file failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'write_file': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const path = args.path as string
+        const content = args.content as string
+        const typingMode = args.typing_mode as boolean
+        
+        if (typingMode) {
+          // 记事本打字模式
+          // 1. 打开记事本
+          await (window as any).electronAPI.runApp({ appName: 'notepad' })
+          await new Promise(resolve => setTimeout(resolve, 1500))
+          
+          // 2. 聚焦记事本
+          await (window as any).electronAPI.focusWindow({ process: 'notepad' })
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          // 3. 逐字输入
+          await (window as any).electronAPI.typeText({ text: content, delay: 30 })
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          // 4. Ctrl+S 保存
+          await (window as any).electronAPI.pressKey({ key: 'ctrl+s' })
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // 5. 输入文件名（在保存对话框中）
+          await (window as any).electronAPI.typeText({ text: path, delay: 20 })
+          await new Promise(resolve => setTimeout(resolve, 300))
+          
+          // 6. 按 Enter 保存
+          await (window as any).electronAPI.pressKey({ key: 'enter' })
+          
+          return 'File written using notepad typing mode: ' + path
+        } else {
+          // 直接写入
+          const result = await (window as any).electronAPI.fsWriteFile({ path, content })
+          if (result.success) {
+            return 'File written: ' + result.path
+          }
+          return 'Write file failed: ' + result.error
+        }
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'list_directory': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const path = args.path as string
+        const result = await (window as any).electronAPI.fsListDirectory({ path })
+        if (result.success) {
+          const items = result.items || []
+          if (items.length === 0) {
+            return 'Directory is empty: ' + result.path
+          }
+          const list = items.map((item: any) => {
+            const type = item.isDirectory ? '[DIR]' : '[FILE]'
+            const size = item.isFile ? ' (' + Math.round(item.size / 1024) + ' KB)' : ''
+            return type + ' ' + item.name + size
+          }).join('\n')
+          return 'Directory: ' + result.path + '\n\n' + list
+        }
+        return 'List directory failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'search_files': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const path = args.path as string
+        const pattern = args.pattern as string
+        const result = await (window as any).electronAPI.fsSearch({ path, pattern })
+        if (result.success) {
+          const files = result.files || []
+          if (files.length === 0) {
+            return 'No files found matching: ' + pattern
+          }
+          return 'Found ' + files.length + ' files:\n' + files.slice(0, 50).join('\n')
+        }
+        return 'Search failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'delete_file': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const path = args.path as string
+        const recursive = args.recursive as boolean
+        const result = await (window as any).electronAPI.fsDelete({ path, recursive })
+        if (result.success) {
+          return 'Deleted: ' + path
+        }
+        return 'Delete failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+
+    // ==================== 进程管理工具 ====================
+    
+    case 'list_processes': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const result = await (window as any).electronAPI.listProcesses()
+        if (result.success) {
+          const procs = result.processes || []
+          // 按内存排序，显示前20个
+          const top = procs.slice(0, 30).map((p: any) => 
+            p.name + ' (PID: ' + p.pid + ') - ' + p.memory
+          ).join('\n')
+          return 'Running processes (top 30):\n' + top
+        }
+        return 'List processes failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'kill_process': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const pid = args.pid as number
+        const name = args.name as string
+        const result = await (window as any).electronAPI.killProcess({ pid, name })
+        if (result.success) {
+          return 'Process terminated: ' + (pid || name)
+        }
+        return 'Kill process failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'get_system_usage': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const result = await (window as any).electronAPI.getSystemUsage()
+        if (result.success) {
+          return '[System Usage]\n' +
+            'CPU: ' + result.cpu.usage + '% (' + result.cpu.cores + ' cores)\n' +
+            'Memory: ' + result.memory.used + 'GB / ' + result.memory.total + 'GB (' + result.memory.usage + '%)'
+        }
+        return 'Get usage failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+
+    // ==================== 屏幕截图工具 ====================
+    
+    case 'capture_screen': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const result = await (window as any).electronAPI.captureScreen()
+        if (result.success) {
+          return 'Screen captured: ' + result.size.width + 'x' + result.size.height + ' (' + result.name + ')'
+        }
+        return 'Capture screen failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'list_all_windows': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const result = await (window as any).electronAPI.listWindows()
+        if (result.success) {
+          const windows = result.windows || []
+          const list = windows.map((w: any, i: number) => (i + 1) + '. ' + w.name).join('\n')
+          return 'Open windows (' + windows.length + '):\n' + list
+        }
+        return 'List windows failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'capture_window': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const name = args.name as string
+        const result = await (window as any).electronAPI.captureWindow({ name })
+        if (result.success) {
+          return 'Window captured: ' + result.name + ' (' + result.size.width + 'x' + result.size.height + ')'
+        }
+        return 'Capture window failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+
+    // ==================== 定时任务工具 ====================
+    
+    case 'create_reminder': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const title = args.title as string
+        const message = args.message as string
+        const delayMinutes = args.delay_minutes as number
+        
+        const delay = delayMinutes * 60 * 1000  // 转换为毫秒
+        
+        const result = await (window as any).electronAPI.createReminder({ title, message, delay })
+        if (result.success) {
+          return 'Reminder created! Will trigger at: ' + result.triggerTime + ' (ID: ' + result.id + ')'
+        }
+        return 'Create reminder failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'create_scheduled_task': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const title = args.title as string
+        const message = args.message as string
+        const time = args.time as string
+        const repeat = (args.repeat as string) || 'none'
+        
+        const result = await (window as any).electronAPI.createScheduledTask({ title, message, time, repeat })
+        if (result.success) {
+          const repeatStr = repeat !== 'none' ? ' (repeats ' + repeat + ')' : ''
+          return 'Task scheduled! Will trigger at: ' + result.triggerTime + repeatStr + ' (ID: ' + result.id + ')'
+        }
+        return 'Create task failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'list_scheduled_tasks': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const result = await (window as any).electronAPI.listScheduledTasks()
+        if (result.success) {
+          const tasks = result.tasks || []
+          if (tasks.length === 0) {
+            return 'No scheduled tasks'
+          }
+          const list = tasks.map((t: any) => {
+            const status = t.active ? '[ACTIVE]' : '[INACTIVE]'
+            const repeat = t.repeat !== 'none' ? ' (repeats ' + t.repeat + ')' : ''
+            return status + ' ' + t.title + '\n  ID: ' + t.id + '\n  Time: ' + t.triggerTime + repeat + '\n  Message: ' + t.message
+          }).join('\n\n')
+          return 'Scheduled tasks (' + tasks.length + '):\n\n' + list
+        }
+        return 'List tasks failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
+      }
+    }
+    
+    case 'cancel_scheduled_task': {
+      if (!isElectron) return 'Desktop app only'
+      try {
+        const id = args.id as string
+        const result = await (window as any).electronAPI.cancelScheduledTask({ id })
+        if (result.success) {
+          return 'Task cancelled: ' + id
+        }
+        return 'Cancel task failed: ' + result.error
+      } catch (e) {
+        return 'Error: ' + e
       }
     }
 
@@ -4952,6 +6456,14 @@ const systemPrompt = `你是 CFspider 智能浏览器自动化助手，由 viole
 
 4. **close_tab(index?)** - 关闭标签页
 
+5. **close_popup(method?, selector?, max_attempts?)** - 关闭弹窗/模态框/广告
+   - method: 'auto'(自动尝试所有方法)、'click_close'(点击关闭按钮)、'press_escape'(按ESC)、'click_outside'(点击外部)、'specific_selector'(指定选择器)
+   - selector: 当method为specific_selector时，指定关闭按钮的CSS选择器
+   - max_attempts: 最大尝试次数，默认3次
+   - 示例: close_popup() - 自动尝试关闭
+   - 示例: close_popup(method="specific_selector", selector=".login-box .close") - 使用指定选择器
+   - 当检测到弹窗遮挡页面操作时，优先使用此工具关闭弹窗
+
 典型场景：
 - 用户："帮我登录，验证码在邮箱里"
   1. list_tabs() 查看当前标签页
@@ -4959,6 +6471,13 @@ const systemPrompt = `你是 CFspider 智能浏览器自动化助手，由 viole
   3. 找到验证码
   4. switch_tab(index=0) 切回原标签页
   5. 输入验证码
+
+### 处理弹窗和模态框：
+当页面出现弹窗、登录框、广告遮罩等阻挡操作时：
+1. 首先尝试 close_popup() 自动关闭
+2. 如果失败，工具会返回检测到的弹窗元素信息
+3. 根据返回信息，使用 close_popup(method="specific_selector", selector="具体选择器") 精确关闭
+4. 如果是登录弹窗且用户需要登录，使用 request_login_choice 询问用户选择
 
 ### 阅读和总结页面内容：
 当用户要求"总结这个页面"、"阅读这个文档"、"这个项目是什么"等需要查看完整页面内容的任务时：
@@ -5168,6 +6687,31 @@ navigate_to 只能导航到搜索引擎：
 
 **重要**：错误不要再犯，成功的方法要记住多用！
 
+### 自我扩展 - 自动创建技能
+
+当你发现某个操作序列可以复用时，主动使用 **create_skill** 创建技能：
+
+1. **创建技能的时机**：
+   - 连续 3+ 个成功操作形成了可复用的模式
+   - 在同一网站上重复执行相似操作 2+ 次
+   - 用户明确要求"记住这个操作"或"下次也这样做"
+
+2. **create_skill 工具用法**：
+   - name: 技能名称，如"京东搜索商品"
+   - triggers: 触发词列表，如["搜索京东", "京东找东西"]
+   - steps: 操作步骤，如 [{action: "click", target: "#search-input"}, ...]
+   - domains: 适用域名，如["jd.com"]（可选）
+
+3. **技能创建后**：
+   - 技能会永久保存
+   - 下次用户说触发词时自动使用
+   - 可用 **list_skills** 查看已有技能
+
+4. **示例**：
+   成功在京东搜索商品后：
+   "这个搜索流程挺顺利的，我帮你创建一个技能，下次说'搜索京东'就能直接用了~"
+   [调用 create_skill，创建技能]
+
 ## 智能搜索切换策略
 
 当用户连续搜索不同内容时（如先搜索淘宝，再搜索京东），应该：
@@ -5242,6 +6786,261 @@ export async function manualSafetyCheck(): Promise<string> {
   }
 }
 
+// 检测是否是简单对话（不需要工具和视觉模型）
+function isSimpleChat(content: string): boolean {
+  const lowerContent = content.toLowerCase().trim()
+  
+  // 需要上下文的词语（不能简化处理）
+  const contextRequiredWords = [
+    '继续', '接着', '然后', '下一步', '再来', '重试', '重新', '再试',
+    '取消', '停止', '暂停', '回退', '返回', '后退', '刷新',
+    '确认', '提交', '保存', '发送', '完成',
+    '上一个', '下一个', '第一个', '第二个', '第三个',
+    '这个', '那个', '它', '他', '她', '这里', '那里',
+    '刚才', '之前', '上次', '再', '又'
+  ]
+  
+  // 如果包含需要上下文的词语，不能简化处理
+  if (contextRequiredWords.some(w => lowerContent.includes(w))) {
+    return false
+  }
+  
+  // 简单问候和对话
+  const simplePatterns = [
+    /^(你好|hi|hey|hello|嗨|哈喽|早上好|晚上好|下午好)[\s!！~。,.，]*$/i,
+    /^(谢谢|感谢|thank|thanks|多谢)[\s!！~。,.，]*$/i,
+    /^(好的|ok|行|嗯|知道了|明白了|收到)[\s!！~。,.，]*$/i,
+    /^(再见|拜拜|bye|88|886)[\s!！~。,.，]*$/i,
+    /^你(是谁|叫什么|能做什么|有什么功能|怎么用)/,
+    /^(介绍|说说)(一下)?(你自己|自己)/,
+    /^(什么是|告诉我)(cfspider|这个工具)/i,
+    /^怎么样\??$/,
+    /^你好吗\??$/,
+    /^(今天|现在)(天气|几点|星期几)/,
+  ]
+  
+  for (const pattern of simplePatterns) {
+    if (pattern.test(lowerContent)) {
+      return true
+    }
+  }
+  
+  // 非常短的消息（少于 4 个字符且不包含操作关键词）
+  if (lowerContent.length <= 3) {
+    const actionKeywords = ['打开', '搜索', '点击', '输入', '找', '看', '去', '跳转', '下载', '登录', '帮']
+    if (!actionKeywords.some(k => lowerContent.includes(k))) {
+      return true
+    }
+  }
+  
+  return false
+}
+
+// ==================== 模块化系统提示词 ====================
+
+// 基础模块（始终加载，约 200 tokens）
+const PROMPT_BASE = `你是 CFspider 智能浏览器助手，由 violetteam 团队开发。
+
+语气要求：
+- 专业简洁，不浮夸
+- 避免过度热情的词汇如"太好了""完美""搞定了""好嘞"
+- 遇到错误直接说明问题，不用"艹""靠"等
+- 操作完成后简短确认，如"已完成"、"文件已创建"
+
+重要规则：
+- 每次工具调用后简短说明正在做什么
+- 先观察当前页面再行动
+- 操作失败时换方法重试`
+
+// 导航模块（当涉及打开网站、跳转时加载）
+const PROMPT_NAVIGATION = `
+## 导航规则
+- navigate_to 只能导航到搜索引擎：cn.bing.com（首选）、baidu.com、google.com
+- 禁止直接导航到其他网站，必须通过搜索引擎访问
+- 如果当前已在搜索引擎，直接搜索，不要再跳转
+- 使用 get_page_info() 检查当前页面状态`
+
+// 搜索模块（当涉及搜索时加载）
+const PROMPT_SEARCH = `
+## 搜索操作
+1. 检查当前是否在搜索引擎
+2. 在搜索框输入内容（input_text）
+3. 点击搜索按钮（click_search_button）
+4. 等待结果加载
+5. 点击目标链接（click_text 或 click_by_index）`
+
+// 点击模块（当涉及点击时加载）
+const PROMPT_CLICK = `
+## 点击操作
+- click_text(text, target_domain): 点击包含指定文字的元素
+- click_button(text): 专门点击按钮元素（加入购物车、提交等）
+- click_by_index(type, index): 按索引点击（推荐，更精确）
+- click_element(selector): 用 CSS 选择器点击
+- 点击前可用 scan_interactive_elements 扫描可点击元素`
+
+// 输入模块（当涉及输入时加载）
+const PROMPT_INPUT = `
+## 输入操作
+- input_text(text, clear): 在当前聚焦的输入框输入文字
+- clear=true 时先清空再输入
+- 搜索框输入后用 click_search_button() 提交`
+
+// 标签页模块（当涉及多标签页时加载）
+const PROMPT_TABS = `
+## 标签页管理
+- new_tab(url?): 新建标签页
+- switch_tab(index/title): 切换标签页
+- list_tabs(): 列出所有标签页
+- close_tab(index?): 关闭标签页
+典型场景：查看邮箱验证码时新开标签页`
+
+// 弹窗模块（当涉及弹窗时加载）
+const PROMPT_POPUP = `
+## 弹窗处理
+- close_popup(): 自动尝试关闭弹窗
+- close_popup(method="specific_selector", selector="..."): 指定选择器关闭
+- 登录弹窗用 request_login_choice 让用户选择`
+
+// 视觉模块（当涉及视觉分析时加载）
+const PROMPT_VISION = `
+## 视觉工具
+- solve_captcha(): 验证码识别
+- visual_click(description): 视觉定位点击
+- analyze_image(selector, question): 图片分析
+- read_full_page(): 滚动阅读整个页面
+- ocr_image(selector): 图片文字提取`
+
+// 滚动模块（当涉及滚动时加载）
+const PROMPT_SCROLL = `
+## 滚动操作
+- scroll_page(direction, amount): 滚动页面
+- direction: "up"/"down"/"left"/"right"
+- amount: 像素数，默认 500`
+
+// 技能模块（当涉及技能时加载）
+const PROMPT_SKILLS = `
+## 技能系统
+- create_skill(name, triggers, steps, domains): 创建可复用技能
+- list_skills(): 查看已有技能
+- 连续 3+ 成功操作可创建技能`
+
+// 系统操作模块（当涉及本地应用时加载）
+const PROMPT_SYSTEM = `
+## 本地系统操作
+- run_app(app_name): 运行本地应用
+- check_app(app_name): 检查应用是否安装
+- open_file(path): 用默认程序打开文件
+
+## 文件操作
+- read_file(path): 读取文件
+- write_file(path, content): 写入文件
+- list_directory(path): 列出目录
+
+## 键盘鼠标模拟
+- type_text(text): 模拟键盘打字
+- press_key(key): 按键如 ctrl+s, enter
+- mouse_click(x, y): 点击屏幕坐标
+- focus_window(title): 激活窗口
+
+## 重要：路径规则
+- 用户说"桌面"时，中国用户通常使用 OneDrive 同步，优先用：
+  - %USERPROFILE%\\OneDrive\\桌面（中文）
+  - 如果失败再尝试 %USERPROFILE%\\Desktop（英文）
+- 先用 get_system_info 获取用户主目录确认路径
+- 支持环境变量如 %USERPROFILE%, %TEMP%
+
+## 语气规则
+- 保持专业简洁，不要用浮夸词汇如"太好了""完美""搞定了"
+- 遇到错误直接说明问题，不要用"艹""靠"等粗话
+- 操作完成后简短确认即可，如"已创建文件：路径"`
+
+// 简化的对话提示词
+const simpleChatPrompt = `你是 CFspider 智能浏览器助手，由 violetteam 团队开发。用中文简洁专业地回复。
+
+功能：浏览器自动化（打开网站、搜索、点击、填写表单）和系统操作（文件、应用）。
+
+语气：专业简洁，不浮夸，避免"太好了""完美"等词。`
+
+// 根据用户消息内容判断需要加载哪些模块
+function getRequiredPromptModules(content: string): string[] {
+  const modules: string[] = []
+  const lowerContent = content.toLowerCase()
+  
+  // 导航关键词
+  if (/打开|访问|去|跳转|进入|网站|网页|官网|首页/.test(lowerContent)) {
+    modules.push(PROMPT_NAVIGATION)
+    modules.push(PROMPT_SEARCH)
+  }
+  
+  // 搜索关键词
+  if (/搜索|查找|找|查|搜/.test(lowerContent)) {
+    modules.push(PROMPT_SEARCH)
+    modules.push(PROMPT_INPUT)
+  }
+  
+  // 点击关键词
+  if (/点击|点|按|选择|选/.test(lowerContent)) {
+    modules.push(PROMPT_CLICK)
+  }
+  
+  // 输入关键词
+  if (/输入|填写|填|写|登录|注册|账号|密码/.test(lowerContent)) {
+    modules.push(PROMPT_INPUT)
+  }
+  
+  // 标签页关键词
+  if (/标签|新开|切换|多个|同时|邮箱|验证码/.test(lowerContent)) {
+    modules.push(PROMPT_TABS)
+  }
+  
+  // 弹窗关键词
+  if (/弹窗|广告|关闭|模态|登录框|遮挡/.test(lowerContent)) {
+    modules.push(PROMPT_POPUP)
+  }
+  
+  // 视觉关键词
+  if (/看|图片|图|验证码|识别|分析|总结|阅读|内容|ocr|截图/.test(lowerContent)) {
+    modules.push(PROMPT_VISION)
+  }
+  
+  // 滚动关键词
+  if (/滚动|翻页|下拉|上拉|向下|向上|更多/.test(lowerContent)) {
+    modules.push(PROMPT_SCROLL)
+  }
+  
+  // 技能关键词
+  if (/技能|skill|记住|学习|保存操作/.test(lowerContent)) {
+    modules.push(PROMPT_SKILLS)
+  }
+  
+  // 系统操作关键词
+  if (/打开.*软件|启动|运行|本地|电脑|桌面|客户端|播放器|微信|qq|vscode|b站|bilibili|哔哩哔哩|potplayer|vlc|音乐|视频播放|文件|文件夹/.test(lowerContent)) {
+    modules.push(PROMPT_SYSTEM)
+  }
+  
+  // 去重
+  return [...new Set(modules)]
+}
+
+// 构建动态系统提示词
+function buildDynamicSystemPrompt(content: string, modelIntro: string = ''): string {
+  const modules = getRequiredPromptModules(content)
+  
+  let prompt = PROMPT_BASE
+  
+  // 添加模型介绍
+  if (modelIntro) {
+    prompt += '\n\n' + modelIntro
+  }
+  
+  // 添加需要的模块
+  if (modules.length > 0) {
+    prompt += '\n' + modules.join('\n')
+  }
+  
+  return prompt
+}
+
 export async function sendAIMessage(content: string, useTools: boolean = true) {
   const store = useStore.getState()
   const { aiConfig, messages, addMessage, updateLastMessageWithToolCalls, setAILoading, resetAIStop, setCurrentModelType } = store
@@ -5284,11 +7083,38 @@ export async function sendAIMessage(content: string, useTools: boolean = true) {
     return
   }
 
+  // 检测是否是简单对话
+  const isSimple = isSimpleChat(content)
+  
   // Reset stop flag at the start of new conversation
   useStore.getState().resetAIStop()
   
   setAILoading(true)
   addMessage({ role: 'user', content })
+  
+  // 简单对话使用快速处理路径
+  if (isSimple) {
+    addMessage({ role: 'assistant', content: '...' })
+    try {
+      const response = await callAIWithTokenTracking({
+        endpoint: effectiveConfig.endpoint,
+        apiKey: effectiveConfig.apiKey,
+        model: effectiveConfig.model,
+        messages: [
+          { role: 'system', content: simpleChatPrompt },
+          { role: 'user', content }
+        ]
+      }, 'chat')
+      
+      const reply = response.choices?.[0]?.message?.content || '你好，有什么可以帮你的吗？'
+      updateLastMessageWithToolCalls(reply, [])
+    } catch (e) {
+      updateLastMessageWithToolCalls('抱歉，出了点问题。有什么我可以帮你的吗？', [])
+    }
+    setAILoading(false)
+    return
+  }
+  
   addMessage({ role: 'assistant', content: '正在分析页面...' })
 
   // 确定模型模式和视觉模型配置
@@ -5369,30 +7195,28 @@ export async function sendAIMessage(content: string, useTools: boolean = true) {
     
     let modelIntroduction = ''
     if (modelMode === 'dual' && visionModelName) {
-      const toolTeamStr = toolModelTeam ? `（由 ${toolModelTeam} 开发）` : ''
-      const visionTeamStr = visionModelTeam ? `（由 ${visionModelTeam} 开发）` : ''
-      modelIntroduction = `目前由两个模型共同驱动：${toolModelName}${toolTeamStr}负责文本理解和工具调用，${visionModelName}${visionTeamStr}负责页面视觉分析。`
+      const toolTeamStr = toolModelTeam ? '(' + toolModelTeam + ')' : ''
+      const visionTeamStr = visionModelTeam ? '(' + visionModelTeam + ')' : ''
+      modelIntroduction = 'Dual: ' + toolModelName + toolTeamStr + ' + ' + visionModelName + visionTeamStr
     } else {
-      const teamStr = toolModelTeam ? `（由 ${toolModelTeam} 开发）` : ''
-      modelIntroduction = `目前由 ${toolModelName} 模型${teamStr}驱动。`
+      const teamStr = toolModelTeam ? '(' + toolModelTeam + ')' : ''
+      modelIntroduction = toolModelName + teamStr
     }
     
-    // 替换系统提示中的模型名占位符
-    const dynamicSystemPrompt = systemPrompt
-      .replace(/\{\{TOOL_MODEL_NAME\}\}/g, toolModelName)
-      .replace(/\{\{MODEL_INTRODUCTION\}\}/g, modelIntroduction)
+    // 使用动态按需加载的系统提示词（大幅减少 token 消耗）
+    const dynamicSystemPrompt = buildDynamicSystemPrompt(content, modelIntroduction)
     
     // 如果有 OCR 页面分析结果，添加到系统提示词中
     const enhancedSystemPrompt = pageContext 
-      ? `${dynamicSystemPrompt}\n\n## 当前页面分析结果（由视觉模型提供）\n\n${pageContext}\n\n请根据以上页面分析结果来决定下一步操作。`
+      ? dynamicSystemPrompt + '\n\n## Current Page\n' + pageContext
       : dynamicSystemPrompt
     
     const chatHistory: Array<{ role: string; content?: string; tool_calls?: any[]; tool_call_id?: string; name?: string }> = [
       { role: 'system', content: enhancedSystemPrompt }
     ]
     
-    // 获取最近 200 条消息，并包含工具调用详情（足够记住完整的操作流程）
-    const recentMessages = messages.slice(-200)
+    // 获取最近的消息（限制数量以节省 token）
+    const recentMessages = messages.slice(-20)
     for (const msg of recentMessages) {
       if (msg.role === 'user') {
         chatHistory.push({ role: 'user', content: msg.content })
@@ -5405,11 +7229,11 @@ export async function sendAIMessage(content: string, useTools: boolean = true) {
             const argsStr = JSON.stringify(tc.arguments)
             // 保留更多结果信息，让 AI 能充分了解之前的操作
             const resultPreview = tc.result ? tc.result.slice(0, 500) : ''
-            return `[${tc.name}(${argsStr})] => ${resultPreview}`
+            return '[' + tc.name + '(' + argsStr + ')] => ' + resultPreview
           }).join('\n')
           
           if (toolSummaries) {
-            operationSummary = `${operationSummary}\n\n已执行的操作记录:\n${toolSummaries}`
+            operationSummary = operationSummary + '\n\nTool history:\n' + toolSummaries
           }
           
           chatHistory.push({ role: 'assistant', content: operationSummary })
@@ -5432,11 +7256,49 @@ export async function sendAIMessage(content: string, useTools: boolean = true) {
         matchedSkill = await matchSkill(content, currentDomain)
         if (matchedSkill) {
           console.log('[CFSpider] 匹配到技能:', matchedSkill.name, '成功率:', matchedSkill.successRate)
+          
+          // 尝试读取对应的 skill md 文件
+          let skillMdContent = ''
+          try {
+            const skillMdFiles: Record<string, string> = {
+              'bing-search': await import('./skills/bing-search.md?raw').then(m => m.default).catch(() => ''),
+              'baidu-search': await import('./skills/baidu-search.md?raw').then(m => m.default).catch(() => ''),
+              'github': await import('./skills/github.md?raw').then(m => m.default).catch(() => ''),
+              'taobao': await import('./skills/taobao.md?raw').then(m => m.default).catch(() => ''),
+              'bilibili': await import('./skills/bilibili.md?raw').then(m => m.default).catch(() => ''),
+              'tencent-video': await import('./skills/tencent-video.md?raw').then(m => m.default).catch(() => ''),
+              'iqiyi-navigation': await import('./skills/iqiyi-navigation.md?raw').then(m => m.default).catch(() => ''),
+              'navigate-to-website': await import('./skills/navigate-to-website.md?raw').then(m => m.default).catch(() => ''),
+              'click-search-result': await import('./skills/click-search-result.md?raw').then(m => m.default).catch(() => '')
+            }
+            skillMdContent = skillMdFiles[matchedSkill.id] || ''
+          } catch (e) {
+            console.log('[CFSpider] 无法加载技能 MD 文件:', e)
+          }
+          
           // 将技能信息添加到聊天历史作为系统提示
-          const skillHint = `[技能提示] 匹配到「${matchedSkill.name}」技能（成功率: ${matchedSkill.successRate}%）
-触发词: ${matchedSkill.triggers.join(', ')}
-操作步骤: ${matchedSkill.steps.map((s, i) => `${i+1}. ${s.action}${s.target ? `: ${s.target}` : ''}`).join(' -> ')}
-${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.learnedPatterns.slice(0, 3).map(p => p.pattern).join(', ')}` : ''}`
+          const stepsStr = matchedSkill.steps.map((s: { action: string; target?: string }, i: number) => 
+            (i + 1) + '. ' + s.action + (s.target ? ': ' + s.target : '')
+          ).join(' -> ')
+          const patternsStr = matchedSkill.learnedPatterns.length > 0 
+            ? 'Patterns: ' + matchedSkill.learnedPatterns.slice(0, 3).map((p: { pattern: string }) => p.pattern).join(', ')
+            : ''
+          let skillHint = '[Skill] ' + matchedSkill.name + ' (rate: ' + matchedSkill.successRate + '%)\n' +
+            'Triggers: ' + matchedSkill.triggers.join(', ') + '\n' +
+            'Steps: ' + stepsStr + '\n' + patternsStr
+          
+          // 如果有 MD 文件内容，添加详细说明
+          if (skillMdContent) {
+            // 提取关键部分（弹窗处理、常见问题）
+            const popupSection = skillMdContent.match(/## 弹窗处理[\s\S]*?(?=\n## |$)/)?.[0] || ''
+            const problemSection = skillMdContent.match(/### 常见问题[\s\S]*?(?=\n### |$)/)?.[0] || ''
+            const closeSection = skillMdContent.match(/### 关闭.*?选择器[\s\S]*?(?=\n### |$)/)?.[0] || ''
+            
+            if (popupSection || problemSection || closeSection) {
+              skillHint += '\n\n[Guide]\n' + popupSection + '\n' + problemSection + '\n' + closeSection
+            }
+          }
+          
           chatHistory.push({ role: 'system', content: skillHint })
         }
       }
@@ -5462,13 +7324,13 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
       // AI 思考时触发鼠标乱动（模拟人类思考时的不自觉动作）
       store.fidgetMouse(0.3)
       
-      const response = await (window as any).electronAPI.aiChat({
+      const response = await callAIWithTokenTracking({
         endpoint: effectiveConfig.endpoint,
         apiKey: effectiveConfig.apiKey,
         model: effectiveConfig.model,
         messages: chatHistory,
         tools: useTools ? aiTools : undefined
-      })
+      }, 'tool')
       
       // 停止思考乱动
       store.stopFidget()
@@ -5543,6 +7405,27 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
             (toolCallHistory[toolCallHistory.length - 1].comment || '') + '\n' + reaction
           updateLastMessageWithToolCalls('', toolCallHistory)
           
+          // 触发错误恢复通知（如果连续失败3次以上）
+          const recentFailures = toolCallHistory.slice(-5).filter(t => 
+            t.result?.includes('Error') || t.result?.includes('失败')
+          )
+          if (recentFailures.length >= 3) {
+            // 生成建议
+            let suggestion = '尝试其他方法或滚动页面查看'
+            if (funcName.includes('click')) {
+              suggestion = '可以使用 visual_click 进行视觉定位点击，或者滚动页面寻找其他元素'
+            } else if (funcName === 'input_text') {
+              suggestion = '确认输入框已聚焦，或者尝试先点击输入框再输入'
+            } else if (funcName === 'navigate_to') {
+              suggestion = '检查网络连接，或者使用搜索引擎搜索目标网站'
+            }
+            
+            notifyErrorRecovery(
+              'Operation ' + funcName + ' failed multiple times',
+              suggestion
+            )
+          }
+          
           // 等待紧张动画完成
           await new Promise(resolve => setTimeout(resolve, 1200))
         }
@@ -5551,7 +7434,7 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
         if (matchedSkill) {
           try {
             await updateSkillLearning(matchedSkill.id, !operationFailed, {
-              pattern: `${funcName}:${JSON.stringify(funcArgs).slice(0, 50)}`,
+              pattern: funcName + ':' + JSON.stringify(funcArgs).slice(0, 50),
               selector: funcArgs.selector || funcArgs.text || funcArgs.target,
               confidence: operationFailed ? 30 : 70,
               successCount: operationFailed ? 0 : 1,
@@ -5562,6 +7445,32 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
           } catch (e) {
             console.error('[CFSpider] 技能学习更新失败:', e)
           }
+        }
+        
+        // 记录操作日志（用于自动技能提取）
+        try {
+          const webviewForLog = document.querySelector('webview') as any
+          if (webviewForLog) {
+            const currentUrlForLog = await webviewForLog.executeJavaScript('window.location.hostname') || ''
+            logOperation(
+              funcName,
+              (funcArgs.selector || funcArgs.target || funcArgs.text) as string | undefined,
+              (funcArgs.value || funcArgs.url) as string | undefined,
+              currentUrlForLog,
+              !operationFailed
+            )
+            
+            // 尝试自动提取技能
+            if (!operationFailed) {
+              const extracted = await autoExtractSkill()
+              if (extracted) {
+                // 在聊天中通知用户
+                console.log('[CFSpider] 自动创建技能:', extracted.skill.name, '-', extracted.reason)
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[CFSpider] 操作日志记录失败:', e)
         }
 
         chatHistory.push({
@@ -5598,7 +7507,7 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
               const image = await webview.capturePage()
               if (image) {
                 const base64Image = image.toDataURL().replace(/^data:image\/\w+;base64,/, '')
-                const visionResponse = await (window as any).electronAPI.aiChat({
+                const visionResponse = await callAIWithTokenTracking({
                   endpoint: visionConfig.endpoint,
                   apiKey: visionConfig.apiKey,
                   model: visionConfig.model,
@@ -5607,17 +7516,11 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
                     content: [
                       {
                         type: 'text',
-                        text: `刚执行了"${funcName}"操作。请分析当前页面状态：
-1. 现在在什么网站/页面？
-2. 页面主要内容是什么？
-3. 有哪些可以进行的操作？
-4. 是否有搜索框？如果有，是否已有输入内容？
-
-请简洁回答（100字以内）。`
+                        text: 'After "' + funcName + '" operation. Analyze page: 1. Current site? 2. Main content? 3. Available actions? 4. Search box status? (Brief, <100 chars)'
                       },
                       {
                         type: 'image_url',
-                        image_url: { url: `data:image/png;base64,${base64Image}` }
+                        image_url: { url: 'data:image/png;base64,' + base64Image }
                       }
                     ]
                   }]
@@ -5635,7 +7538,7 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
         
         // 将工具结果和视觉更新一起反馈给工具模型
         const toolResultWithVision = visualUpdate 
-          ? `${result}\n\n【视觉模型观察】${visualUpdate}`
+          ? result + '\n\n[Vision] ' + visualUpdate
           : result
         
         chatHistory.push({
@@ -5653,6 +7556,18 @@ ${matchedSkill.learnedPatterns.length > 0 ? `学习到的模式: ${matchedSkill.
           updateLastMessageWithToolCalls(finalText.slice(0, i), toolCallHistory)
           await new Promise(resolve => setTimeout(resolve, 15)) // 15ms per character for final message
         }
+        
+        // 任务完成通知（如果有多步操作成功完成）
+        const successfulOps = toolCallHistory.filter(t => 
+          t.result && !t.result.includes('Error') && !t.result.includes('失败')
+        )
+        if (successfulOps.length >= 3) {
+          notifyTaskComplete(
+            'Completed ' + successfulOps.length + ' operations',
+            finalText.slice(0, 50) + (finalText.length > 50 ? '...' : '')
+          )
+        }
+        
         break
       }
     }

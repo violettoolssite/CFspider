@@ -97,6 +97,82 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onCloseTab: (callback: () => void) => {
     ipcRenderer.on('close-tab', () => callback())
+  },
+
+  // 系统操作 API
+  checkApp: (appName: string) => ipcRenderer.invoke('system:check-app', appName),
+  runApp: (params: { appName?: string; path?: string; args?: string[]; url?: string }) => 
+    ipcRenderer.invoke('system:run-app', params),
+  openPath: (path: string) => ipcRenderer.invoke('system:open-path', path),
+  runCommand: (params: { command: string; cwd?: string; timeout?: number }) => 
+    ipcRenderer.invoke('system:run-command', params),
+  listApps: () => ipcRenderer.invoke('system:list-apps'),
+  getSystemInfo: () => ipcRenderer.invoke('system:info'),
+
+  // 键盘鼠标模拟 API
+  typeText: (params: { text: string; delay?: number }) => 
+    ipcRenderer.invoke('input:type-text', params),
+  pressKey: (params: { key: string }) => 
+    ipcRenderer.invoke('input:press-key', params),
+  mouseClick: (params: { x: number; y: number; button?: 'left' | 'right' | 'middle'; clicks?: number }) => 
+    ipcRenderer.invoke('input:mouse-click', params),
+  mouseMove: (params: { x: number; y: number; smooth?: boolean }) => 
+    ipcRenderer.invoke('input:mouse-move', params),
+  mouseDrag: (params: { fromX: number; fromY: number; toX: number; toY: number }) => 
+    ipcRenderer.invoke('input:mouse-drag', params),
+  focusWindow: (params: { title?: string; process?: string }) => 
+    ipcRenderer.invoke('input:focus-window', params),
+  getMousePos: () => ipcRenderer.invoke('input:get-mouse-pos'),
+
+  // 剪贴板 API
+  readClipboard: () => ipcRenderer.invoke('clipboard:read'),
+  writeClipboard: (params: { text?: string; html?: string; image?: string }) => 
+    ipcRenderer.invoke('clipboard:write', params),
+
+  // 系统通知 API
+  sendNotification: (params: { title: string; body: string; icon?: string; silent?: boolean }) => 
+    ipcRenderer.invoke('notify:send', params),
+
+  // 文件系统 API
+  fsReadFile: (params: { path: string; encoding?: string }) => 
+    ipcRenderer.invoke('fs:read-file', params),
+  fsWriteFile: (params: { path: string; content: string; encoding?: string }) => 
+    ipcRenderer.invoke('fs:write-file', params),
+  fsListDirectory: (params: { path: string; recursive?: boolean }) => 
+    ipcRenderer.invoke('fs:list-directory', params),
+  fsCreateDirectory: (params: { path: string }) => 
+    ipcRenderer.invoke('fs:create-directory', params),
+  fsDelete: (params: { path: string; recursive?: boolean }) => 
+    ipcRenderer.invoke('fs:delete', params),
+  fsMove: (params: { from: string; to: string }) => 
+    ipcRenderer.invoke('fs:move', params),
+  fsSearch: (params: { path: string; pattern: string; maxResults?: number }) => 
+    ipcRenderer.invoke('fs:search', params),
+  fsGetInfo: (params: { path: string }) => 
+    ipcRenderer.invoke('fs:get-info', params),
+
+  // 进程管理 API
+  listProcesses: () => ipcRenderer.invoke('process:list'),
+  killProcess: (params: { pid?: number; name?: string }) => 
+    ipcRenderer.invoke('process:kill', params),
+  getSystemUsage: () => ipcRenderer.invoke('process:usage'),
+
+  // 屏幕截图 API
+  captureScreen: () => ipcRenderer.invoke('screen:capture'),
+  listWindows: () => ipcRenderer.invoke('screen:list-windows'),
+  captureWindow: (params: { name: string }) => 
+    ipcRenderer.invoke('screen:capture-window', params),
+
+  // 定时任务 API
+  createReminder: (params: { title: string; message: string; delay: number }) => 
+    ipcRenderer.invoke('scheduler:create-reminder', params),
+  createScheduledTask: (params: { title: string; message: string; time: string; repeat?: string }) => 
+    ipcRenderer.invoke('scheduler:create-task', params),
+  listScheduledTasks: () => ipcRenderer.invoke('scheduler:list'),
+  cancelScheduledTask: (params: { id: string }) => 
+    ipcRenderer.invoke('scheduler:cancel', params),
+  onTaskTriggered: (callback: (task: object) => void) => {
+    ipcRenderer.on('task:triggered', (_event, task) => callback(task))
   }
 })
 
@@ -151,6 +227,81 @@ declare global {
       onFocusAddressbar: (callback: () => void) => void
       onNewTab: (callback: () => void) => void
       onCloseTab: (callback: () => void) => void
+      // 系统操作
+      checkApp: (appName: string) => Promise<{ installed: boolean; path?: string; isShortcut?: boolean }>
+      runApp: (params: { appName?: string; path?: string; args?: string[]; url?: string }) => 
+        Promise<{ success: boolean; message?: string; error?: string; pid?: number }>
+      openPath: (path: string) => Promise<{ success: boolean; error?: string }>
+      runCommand: (params: { command: string; cwd?: string; timeout?: number }) => 
+        Promise<{ success: boolean; stdout?: string; stderr?: string; error?: string }>
+      listApps: () => Promise<Array<{ name: string; path: string }>>
+      getSystemInfo: () => Promise<{
+        platform: string
+        arch: string
+        hostname: string
+        username: string
+        homedir: string
+        tmpdir: string
+        cpus: number
+        memory: { total: number; free: number }
+      }>
+      // 键盘鼠标模拟
+      typeText: (params: { text: string; delay?: number }) => 
+        Promise<{ success: boolean; typed?: number; error?: string }>
+      pressKey: (params: { key: string }) => 
+        Promise<{ success: boolean; key?: string; error?: string }>
+      mouseClick: (params: { x: number; y: number; button?: 'left' | 'right' | 'middle'; clicks?: number }) => 
+        Promise<{ success: boolean; x?: number; y?: number; error?: string }>
+      mouseMove: (params: { x: number; y: number; smooth?: boolean }) => 
+        Promise<{ success: boolean; x?: number; y?: number; error?: string }>
+      mouseDrag: (params: { fromX: number; fromY: number; toX: number; toY: number }) => 
+        Promise<{ success: boolean; error?: string }>
+      focusWindow: (params: { title?: string; process?: string }) => 
+        Promise<{ success: boolean; message?: string; error?: string }>
+      getMousePos: () => Promise<{ success: boolean; x?: number; y?: number; error?: string }>
+      // 剪贴板
+      readClipboard: () => Promise<{ success: boolean; type?: string; content?: string; error?: string }>
+      writeClipboard: (params: { text?: string; html?: string; image?: string }) => 
+        Promise<{ success: boolean; type?: string; error?: string }>
+      // 系统通知
+      sendNotification: (params: { title: string; body: string; icon?: string; silent?: boolean }) => 
+        Promise<{ success: boolean; error?: string }>
+      // 文件系统
+      fsReadFile: (params: { path: string; encoding?: string }) => 
+        Promise<{ success: boolean; content?: string; error?: string }>
+      fsWriteFile: (params: { path: string; content: string; encoding?: string }) => 
+        Promise<{ success: boolean; path?: string; error?: string }>
+      fsListDirectory: (params: { path: string; recursive?: boolean }) => 
+        Promise<{ success: boolean; items?: Array<object>; error?: string }>
+      fsCreateDirectory: (params: { path: string }) => 
+        Promise<{ success: boolean; error?: string }>
+      fsDelete: (params: { path: string; recursive?: boolean }) => 
+        Promise<{ success: boolean; error?: string }>
+      fsMove: (params: { from: string; to: string }) => 
+        Promise<{ success: boolean; error?: string }>
+      fsSearch: (params: { path: string; pattern: string; maxResults?: number }) => 
+        Promise<{ success: boolean; files?: string[]; error?: string }>
+      fsGetInfo: (params: { path: string }) => 
+        Promise<{ success: boolean; info?: object; error?: string }>
+      // 进程管理
+      listProcesses: () => Promise<{ success: boolean; processes?: Array<object>; error?: string }>
+      killProcess: (params: { pid?: number; name?: string }) => 
+        Promise<{ success: boolean; error?: string }>
+      getSystemUsage: () => Promise<{ success: boolean; cpu?: object; memory?: object; error?: string }>
+      // 屏幕截图
+      captureScreen: () => Promise<{ success: boolean; image?: string; size?: object; error?: string }>
+      listWindows: () => Promise<{ success: boolean; windows?: Array<object>; error?: string }>
+      captureWindow: (params: { name: string }) => 
+        Promise<{ success: boolean; image?: string; error?: string }>
+      // 定时任务
+      createReminder: (params: { title: string; message: string; delay: number }) => 
+        Promise<{ success: boolean; id?: string; triggerTime?: string; error?: string }>
+      createScheduledTask: (params: { title: string; message: string; time: string; repeat?: string }) => 
+        Promise<{ success: boolean; id?: string; triggerTime?: string; error?: string }>
+      listScheduledTasks: () => Promise<{ success: boolean; tasks?: Array<object>; error?: string }>
+      cancelScheduledTask: (params: { id: string }) => 
+        Promise<{ success: boolean; error?: string }>
+      onTaskTriggered: (callback: (task: object) => void) => void
     }
   }
 }

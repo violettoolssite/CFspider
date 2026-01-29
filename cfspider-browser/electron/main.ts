@@ -1,9 +1,13 @@
-import { app, BrowserWindow, ipcMain, session, Menu, webContents, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, session, Menu, webContents, dialog, shell, clipboard, Notification, desktopCapturer, nativeImage } from 'electron'
 import { join } from 'path'
-import { writeFile, mkdir } from 'fs/promises'
+import { writeFile, mkdir, readdir, access, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import https from 'https'
 import http from 'http'
+import { exec, spawn } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 let mainWindow: BrowserWindow | null = null
 let webviewContents: Electron.WebContents | null = null
@@ -659,4 +663,1517 @@ ipcMain.handle('chat-sessions:save', async (_event, sessions) => {
   
   await fs.writeFile(sessionsPath, JSON.stringify(sessions, null, 2))
   return true
+})
+
+// ==================== 系统操作 API ====================
+
+// 常见应用程序路径映射（Windows）
+const APP_PATHS: Record<string, string[]> = {
+  // 浏览器
+  'chrome': ['C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'],
+  'edge': ['C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'],
+  'firefox': ['C:\\Program Files\\Mozilla Firefox\\firefox.exe', 'C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe'],
+  
+  // 视频/音乐 - B站客户端多个可能路径
+  'bilibili': [
+    '%LOCALAPPDATA%\\bilibili\\哔哩哔哩.exe',
+    '%LOCALAPPDATA%\\Programs\\bilibili\\哔哩哔哩.exe',
+    '%APPDATA%\\bilibili\\哔哩哔哩.exe',
+    '%LOCALAPPDATA%\\bilibili\\app\\哔哩哔哩.exe',
+    'C:\\Program Files\\bilibili\\哔哩哔哩.exe',
+    'C:\\Program Files (x86)\\bilibili\\哔哩哔哩.exe',
+  ],
+  'b站': [
+    '%LOCALAPPDATA%\\bilibili\\哔哩哔哩.exe',
+    '%LOCALAPPDATA%\\Programs\\bilibili\\哔哩哔哩.exe',
+  ],
+  '哔哩哔哩': [
+    '%LOCALAPPDATA%\\bilibili\\哔哩哔哩.exe',
+    '%LOCALAPPDATA%\\Programs\\bilibili\\哔哩哔哩.exe',
+  ],
+  'potplayer': ['C:\\Program Files\\DAUM\\PotPlayer\\PotPlayerMini64.exe', 'C:\\Program Files (x86)\\DAUM\\PotPlayer\\PotPlayerMini.exe'],
+  'vlc': ['C:\\Program Files\\VideoLAN\\VLC\\vlc.exe', 'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe'],
+  'qqmusic': ['%LOCALAPPDATA%\\QQMusic\\QQMusic.exe', 'C:\\Program Files (x86)\\Tencent\\QQMusic\\QQMusic.exe'],
+  'neteasemusic': ['%LOCALAPPDATA%\\NetEase\\CloudMusic\\cloudmusic.exe'],
+  
+  // 社交/通讯
+  'wechat': ['C:\\Program Files\\Tencent\\WeChat\\WeChat.exe', 'C:\\Program Files (x86)\\Tencent\\WeChat\\WeChat.exe'],
+  'qq': ['C:\\Program Files\\Tencent\\QQ\\Bin\\QQ.exe', 'C:\\Program Files (x86)\\Tencent\\QQ\\Bin\\QQ.exe'],
+  'dingtalk': ['%LOCALAPPDATA%\\DingDing\\DingDing.exe'],
+  'telegram': ['%APPDATA%\\Telegram Desktop\\Telegram.exe'],
+  
+  // 开发工具
+  'vscode': ['%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe', 'C:\\Program Files\\Microsoft VS Code\\Code.exe'],
+  'cursor': ['%LOCALAPPDATA%\\Programs\\cursor\\Cursor.exe'],
+  'idea': ['C:\\Program Files\\JetBrains\\IntelliJ IDEA\\bin\\idea64.exe'],
+  'pycharm': ['C:\\Program Files\\JetBrains\\PyCharm\\bin\\pycharm64.exe'],
+  
+  // 办公
+  'word': ['C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE', 'C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\WINWORD.EXE'],
+  'excel': ['C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE', 'C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\EXCEL.EXE'],
+  'powerpoint': ['C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE'],
+  'notepad': ['C:\\Windows\\System32\\notepad.exe'],
+  
+  // 系统工具
+  'cmd': ['C:\\Windows\\System32\\cmd.exe'],
+  'powershell': ['C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'],
+  'explorer': ['C:\\Windows\\explorer.exe'],
+  'calculator': ['calc.exe'],
+  'settings': ['ms-settings:'],
+}
+
+// 展开环境变量
+function expandEnvVars(path: string): string {
+  return path.replace(/%([^%]+)%/g, (_, key) => process.env[key] || '')
+}
+
+// 检查文件是否存在
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(expandEnvVars(path))
+    return true
+  } catch {
+    return false
+  }
+}
+
+// IPC 处理：检查应用是否安装
+ipcMain.handle('system:check-app', async (_event, appName: string) => {
+  const normalizedName = appName.toLowerCase().replace(/\s+/g, '')
+  const paths = APP_PATHS[normalizedName] || []
+  
+  for (const path of paths) {
+    if (await fileExists(path)) {
+      return { installed: true, path: expandEnvVars(path) }
+    }
+  }
+  
+  // 尝试通过 where 命令查找
+  try {
+    const { stdout } = await execAsync(`where ${normalizedName}`, { timeout: 5000 })
+    if (stdout.trim()) {
+      return { installed: true, path: stdout.trim().split('\n')[0] }
+    }
+  } catch {
+    // 命令失败，应用未找到
+  }
+  
+  // 尝试在开始菜单中搜索
+  try {
+    const startMenuPaths = [
+      join(process.env.APPDATA || '', 'Microsoft\\Windows\\Start Menu\\Programs'),
+      'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs'
+    ]
+    
+    for (const menuPath of startMenuPaths) {
+      try {
+        const files = await readdir(menuPath, { recursive: true })
+        const match = files.find(f => 
+          f.toLowerCase().includes(normalizedName) && f.endsWith('.lnk')
+        )
+        if (match) {
+          return { installed: true, path: join(menuPath, match as string), isShortcut: true }
+        }
+      } catch {
+        // 目录读取失败，继续
+      }
+    }
+  } catch {
+    // 搜索失败
+  }
+  
+  return { installed: false }
+})
+
+// IPC 处理：运行应用程序
+ipcMain.handle('system:run-app', async (_event, params: { 
+  appName?: string; 
+  path?: string; 
+  args?: string[];
+  url?: string;
+}) => {
+  try {
+    const { appName, path: appPath, args = [], url } = params
+    
+    // 如果提供了 URL，使用默认浏览器打开
+    if (url) {
+      await shell.openExternal(url)
+      return { success: true, message: 'URL opened in default browser' }
+    }
+    
+    let targetPath = appPath
+    
+    // 如果提供了应用名称，查找路径
+    if (appName && !targetPath) {
+      const normalizedName = appName.toLowerCase().replace(/\s+/g, '')
+      const paths = APP_PATHS[normalizedName] || []
+      
+      for (const p of paths) {
+        if (await fileExists(p)) {
+          targetPath = expandEnvVars(p)
+          break
+        }
+      }
+      
+      // 如果是特殊协议（如 ms-settings:）
+      if (!targetPath && paths.length > 0 && paths[0].includes(':')) {
+        await shell.openExternal(paths[0])
+        return { success: true, message: 'Opened ' + appName }
+      }
+    }
+    
+    if (!targetPath) {
+      return { success: false, error: 'Application not found: ' + (appName || appPath) }
+    }
+    
+    // 展开环境变量
+    targetPath = expandEnvVars(targetPath)
+    
+    // 如果是快捷方式，使用 shell.openPath
+    if (targetPath.endsWith('.lnk')) {
+      await shell.openPath(targetPath)
+      return { success: true, message: 'Launched via shortcut' }
+    }
+    
+    // 启动应用程序
+    const child = spawn(targetPath, args, {
+      detached: true,
+      stdio: 'ignore',
+      shell: true
+    })
+    child.unref()
+    
+    return { success: true, message: 'Launched ' + (appName || targetPath), pid: child.pid }
+  } catch (error) {
+    return { success: false, error: 'Failed to launch: ' + error }
+  }
+})
+
+// IPC 处理：打开文件或文件夹
+ipcMain.handle('system:open-path', async (_event, path: string) => {
+  try {
+    const result = await shell.openPath(expandEnvVars(path))
+    if (result) {
+      return { success: false, error: result }
+    }
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: 'Failed to open: ' + error }
+  }
+})
+
+// IPC 处理：运行系统命令
+ipcMain.handle('system:run-command', async (_event, params: {
+  command: string;
+  cwd?: string;
+  timeout?: number;
+}) => {
+  try {
+    const { command, cwd, timeout = 30000 } = params
+    
+    // 安全检查：禁止危险命令
+    const dangerousPatterns = [
+      /\brm\s+-rf\s+[\/\\]/i,
+      /\bformat\s+[a-z]:/i,
+      /\bdel\s+\/[sf]/i,
+      /\bshutdown\b/i,
+      /\bregedit\b/i,
+    ]
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(command)) {
+        return { success: false, error: 'Dangerous command blocked for safety' }
+      }
+    }
+    
+    const { stdout, stderr } = await execAsync(command, { 
+      cwd: cwd ? expandEnvVars(cwd) : undefined,
+      timeout,
+      windowsHide: true
+    })
+    
+    return { 
+      success: true, 
+      stdout: stdout.slice(0, 5000), // 限制输出大小
+      stderr: stderr.slice(0, 1000)
+    }
+  } catch (error: any) {
+    return { 
+      success: false, 
+      error: error.message || 'Command failed',
+      stdout: error.stdout?.slice(0, 2000),
+      stderr: error.stderr?.slice(0, 1000)
+    }
+  }
+})
+
+// IPC 处理：列出已安装的常见应用
+ipcMain.handle('system:list-apps', async () => {
+  const installedApps: Array<{ name: string; path: string }> = []
+  
+  for (const [name, paths] of Object.entries(APP_PATHS)) {
+    for (const path of paths) {
+      if (await fileExists(path)) {
+        installedApps.push({ name, path: expandEnvVars(path) })
+        break
+      }
+    }
+  }
+  
+  return installedApps
+})
+
+// IPC 处理：获取系统信息
+ipcMain.handle('system:info', async () => {
+  const os = await import('os')
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    hostname: os.hostname(),
+    username: os.userInfo().username,
+    homedir: os.homedir(),
+    tmpdir: os.tmpdir(),
+    cpus: os.cpus().length,
+    memory: {
+      total: os.totalmem(),
+      free: os.freemem()
+    }
+  }
+})
+
+// ==================== 键盘鼠标模拟 API ====================
+
+// PowerShell 脚本模板
+const PS_MOUSE_SETUP = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class MouseOps {
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int X, int Y);
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+    
+    public struct POINT { public int X; public int Y; }
+    
+    public const int MOUSEEVENTF_LEFTDOWN = 0x02;
+    public const int MOUSEEVENTF_LEFTUP = 0x04;
+    public const int MOUSEEVENTF_RIGHTDOWN = 0x08;
+    public const int MOUSEEVENTF_RIGHTUP = 0x10;
+    public const int MOUSEEVENTF_MIDDLEDOWN = 0x20;
+    public const int MOUSEEVENTF_MIDDLEUP = 0x40;
+}
+"@
+`
+
+// IPC 处理：模拟键盘输入（逐字打字）
+ipcMain.handle('input:type-text', async (_event, params: {
+  text: string;
+  delay?: number;  // 每个字符之间的延迟（毫秒）
+}) => {
+  try {
+    const { text, delay = 50 } = params
+    
+    // 使用 PowerShell 的 SendKeys
+    // 需要转义特殊字符
+    const escapedText = text
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\$/g, '`$')
+      .replace(/\+/g, '{+}')
+      .replace(/\^/g, '{^}')
+      .replace(/%/g, '{%}')
+      .replace(/~/g, '{~}')
+      .replace(/\(/g, '{(}')
+      .replace(/\)/g, '{)}')
+      .replace(/\[/g, '{[}')
+      .replace(/\]/g, '{]}')
+      .replace(/\{/g, '{{}')
+      .replace(/\}/g, '{}}')
+    
+    // 逐字符输入以实现打字效果
+    const chars = [...text]
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i]
+      let sendChar = char
+        .replace(/\+/g, '{+}')
+        .replace(/\^/g, '{^}')
+        .replace(/%/g, '{%}')
+        .replace(/~/g, '{~}')
+        .replace(/\(/g, '{(}')
+        .replace(/\)/g, '{)}')
+        .replace(/\[/g, '{[}')
+        .replace(/\]/g, '{]}')
+        .replace(/\{/g, '{{}')
+        .replace(/\}/g, '{}}')
+      
+      // 处理换行
+      if (char === '\n') {
+        sendChar = '{ENTER}'
+      } else if (char === '\t') {
+        sendChar = '{TAB}'
+      }
+      
+      const script = `
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.SendKeys]::SendWait("${sendChar.replace(/"/g, '`"')}")
+      `
+      
+      await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+        windowsHide: true,
+        timeout: 5000
+      })
+      
+      // 添加延迟模拟真人打字
+      if (delay > 0 && i < chars.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay + Math.random() * 30))
+      }
+    }
+    
+    return { success: true, typed: text.length }
+  } catch (error) {
+    return { success: false, error: 'Type failed: ' + error }
+  }
+})
+
+// IPC 处理：按下特定按键
+ipcMain.handle('input:press-key', async (_event, params: {
+  key: string;  // 如 'enter', 'tab', 'escape', 'ctrl+s', 'alt+f4' 等
+}) => {
+  try {
+    const { key } = params
+    
+    // 按键映射
+    const keyMap: Record<string, string> = {
+      'enter': '{ENTER}',
+      'tab': '{TAB}',
+      'escape': '{ESC}',
+      'esc': '{ESC}',
+      'backspace': '{BACKSPACE}',
+      'delete': '{DELETE}',
+      'del': '{DELETE}',
+      'home': '{HOME}',
+      'end': '{END}',
+      'pageup': '{PGUP}',
+      'pagedown': '{PGDN}',
+      'up': '{UP}',
+      'down': '{DOWN}',
+      'left': '{LEFT}',
+      'right': '{RIGHT}',
+      'f1': '{F1}', 'f2': '{F2}', 'f3': '{F3}', 'f4': '{F4}',
+      'f5': '{F5}', 'f6': '{F6}', 'f7': '{F7}', 'f8': '{F8}',
+      'f9': '{F9}', 'f10': '{F10}', 'f11': '{F11}', 'f12': '{F12}',
+      'space': ' ',
+    }
+    
+    let sendKey = key.toLowerCase()
+    
+    // 处理组合键 (ctrl+s, alt+f4 等)
+    if (sendKey.includes('+')) {
+      const parts = sendKey.split('+')
+      let prefix = ''
+      let mainKey = parts[parts.length - 1]
+      
+      for (let i = 0; i < parts.length - 1; i++) {
+        const mod = parts[i].toLowerCase()
+        if (mod === 'ctrl' || mod === 'control') prefix += '^'
+        else if (mod === 'alt') prefix += '%'
+        else if (mod === 'shift') prefix += '+'
+      }
+      
+      mainKey = keyMap[mainKey] || mainKey.toUpperCase()
+      sendKey = prefix + mainKey
+    } else {
+      sendKey = keyMap[sendKey] || sendKey
+    }
+    
+    const script = `
+      Add-Type -AssemblyName System.Windows.Forms
+      [System.Windows.Forms.SendKeys]::SendWait("${sendKey}")
+    `
+    
+    await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 5000
+    })
+    
+    return { success: true, key: sendKey }
+  } catch (error) {
+    return { success: false, error: 'Key press failed: ' + error }
+  }
+})
+
+// IPC 处理：鼠标点击
+ipcMain.handle('input:mouse-click', async (_event, params: {
+  x: number;
+  y: number;
+  button?: 'left' | 'right' | 'middle';
+  clicks?: number;  // 1=单击, 2=双击
+}) => {
+  try {
+    const { x, y, button = 'left', clicks = 1 } = params
+    
+    let downFlag = 0x02  // MOUSEEVENTF_LEFTDOWN
+    let upFlag = 0x04    // MOUSEEVENTF_LEFTUP
+    
+    if (button === 'right') {
+      downFlag = 0x08  // MOUSEEVENTF_RIGHTDOWN
+      upFlag = 0x10    // MOUSEEVENTF_RIGHTUP
+    } else if (button === 'middle') {
+      downFlag = 0x20  // MOUSEEVENTF_MIDDLEDOWN
+      upFlag = 0x40    // MOUSEEVENTF_MIDDLEUP
+    }
+    
+    const clickScript = `
+      ${PS_MOUSE_SETUP}
+      [MouseOps]::SetCursorPos(${Math.round(x)}, ${Math.round(y)})
+      Start-Sleep -Milliseconds 50
+      ${Array(clicks).fill(`
+        [MouseOps]::mouse_event(${downFlag}, 0, 0, 0, 0)
+        Start-Sleep -Milliseconds 30
+        [MouseOps]::mouse_event(${upFlag}, 0, 0, 0, 0)
+        Start-Sleep -Milliseconds 50
+      `).join('')}
+    `
+    
+    await execAsync(`powershell -Command "${clickScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 10000
+    })
+    
+    return { success: true, x, y, button, clicks }
+  } catch (error) {
+    return { success: false, error: 'Mouse click failed: ' + error }
+  }
+})
+
+// IPC 处理：移动鼠标
+ipcMain.handle('input:mouse-move', async (_event, params: {
+  x: number;
+  y: number;
+  smooth?: boolean;  // 是否平滑移动
+}) => {
+  try {
+    const { x, y, smooth = true } = params
+    
+    if (smooth) {
+      // 平滑移动 - 获取当前位置，分步移动
+      const script = `
+        ${PS_MOUSE_SETUP}
+        $point = New-Object MouseOps+POINT
+        [MouseOps]::GetCursorPos([ref]$point)
+        $startX = $point.X
+        $startY = $point.Y
+        $endX = ${Math.round(x)}
+        $endY = ${Math.round(y)}
+        $steps = 20
+        for ($i = 1; $i -le $steps; $i++) {
+          $curX = [int]($startX + ($endX - $startX) * $i / $steps)
+          $curY = [int]($startY + ($endY - $startY) * $i / $steps)
+          [MouseOps]::SetCursorPos($curX, $curY)
+          Start-Sleep -Milliseconds 10
+        }
+      `
+      await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+        windowsHide: true,
+        timeout: 10000
+      })
+    } else {
+      const script = `
+        ${PS_MOUSE_SETUP}
+        [MouseOps]::SetCursorPos(${Math.round(x)}, ${Math.round(y)})
+      `
+      await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+        windowsHide: true,
+        timeout: 5000
+      })
+    }
+    
+    return { success: true, x, y }
+  } catch (error) {
+    return { success: false, error: 'Mouse move failed: ' + error }
+  }
+})
+
+// IPC 处理：鼠标拖拽
+ipcMain.handle('input:mouse-drag', async (_event, params: {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}) => {
+  try {
+    const { fromX, fromY, toX, toY } = params
+    
+    const script = `
+      ${PS_MOUSE_SETUP}
+      [MouseOps]::SetCursorPos(${Math.round(fromX)}, ${Math.round(fromY)})
+      Start-Sleep -Milliseconds 100
+      [MouseOps]::mouse_event(0x02, 0, 0, 0, 0)
+      Start-Sleep -Milliseconds 50
+      
+      $steps = 20
+      for ($i = 1; $i -le $steps; $i++) {
+        $curX = [int](${Math.round(fromX)} + (${Math.round(toX)} - ${Math.round(fromX)}) * $i / $steps)
+        $curY = [int](${Math.round(fromY)} + (${Math.round(toY)} - ${Math.round(fromY)}) * $i / $steps)
+        [MouseOps]::SetCursorPos($curX, $curY)
+        Start-Sleep -Milliseconds 15
+      }
+      
+      Start-Sleep -Milliseconds 50
+      [MouseOps]::mouse_event(0x04, 0, 0, 0, 0)
+    `
+    
+    await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 15000
+    })
+    
+    return { success: true, from: { x: fromX, y: fromY }, to: { x: toX, y: toY } }
+  } catch (error) {
+    return { success: false, error: 'Mouse drag failed: ' + error }
+  }
+})
+
+// IPC 处理：激活/聚焦窗口
+ipcMain.handle('input:focus-window', async (_event, params: {
+  title?: string;   // 窗口标题（模糊匹配）
+  process?: string; // 进程名
+}) => {
+  try {
+    const { title, process: processName } = params
+    
+    let script = ''
+    if (title) {
+      script = `
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinAPI {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+        $windows = Get-Process | Where-Object { $_.MainWindowTitle -like "*${title.replace(/"/g, '`"')}*" }
+        if ($windows.Count -gt 0) {
+          $hwnd = $windows[0].MainWindowHandle
+          [WinAPI]::ShowWindow($hwnd, 9)
+          [WinAPI]::SetForegroundWindow($hwnd)
+          Write-Output "Focused: $($windows[0].MainWindowTitle)"
+        } else {
+          Write-Output "Window not found"
+        }
+      `
+    } else if (processName) {
+      script = `
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinAPI {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+        $proc = Get-Process -Name "${processName.replace(/"/g, '`"')}" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($proc -and $proc.MainWindowHandle -ne 0) {
+          [WinAPI]::ShowWindow($proc.MainWindowHandle, 9)
+          [WinAPI]::SetForegroundWindow($proc.MainWindowHandle)
+          Write-Output "Focused: $($proc.ProcessName)"
+        } else {
+          Write-Output "Process not found or no window"
+        }
+      `
+    } else {
+      return { success: false, error: 'Must provide title or process name' }
+    }
+    
+    const { stdout } = await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 10000
+    })
+    
+    const focused = !stdout.includes('not found')
+    return { success: focused, message: stdout.trim() }
+  } catch (error) {
+    return { success: false, error: 'Focus window failed: ' + error }
+  }
+})
+
+// IPC 处理：获取鼠标当前位置
+ipcMain.handle('input:get-mouse-pos', async () => {
+  try {
+    const script = `
+      ${PS_MOUSE_SETUP}
+      $point = New-Object MouseOps+POINT
+      [MouseOps]::GetCursorPos([ref]$point)
+      Write-Output "$($point.X),$($point.Y)"
+    `
+    
+    const { stdout } = await execAsync(`powershell -Command "${script.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 5000
+    })
+    
+    const [x, y] = stdout.trim().split(',').map(Number)
+    return { success: true, x, y }
+  } catch (error) {
+    return { success: false, error: 'Get mouse pos failed: ' + error }
+  }
+})
+
+// ==================== 剪贴板 API ====================
+
+// IPC 处理：读取剪贴板
+ipcMain.handle('clipboard:read', async () => {
+  try {
+    // 尝试读取文本
+    const text = clipboard.readText()
+    if (text) {
+      return { success: true, type: 'text', content: text }
+    }
+    
+    // 尝试读取图片
+    const image = clipboard.readImage()
+    if (!image.isEmpty()) {
+      const base64 = image.toDataURL()
+      return { success: true, type: 'image', content: base64, size: image.getSize() }
+    }
+    
+    // 尝试读取 HTML
+    const html = clipboard.readHTML()
+    if (html) {
+      return { success: true, type: 'html', content: html }
+    }
+    
+    return { success: true, type: 'empty', content: '' }
+  } catch (error) {
+    return { success: false, error: 'Read clipboard failed: ' + error }
+  }
+})
+
+// IPC 处理：写入剪贴板
+ipcMain.handle('clipboard:write', async (_event, params: {
+  text?: string;
+  html?: string;
+  image?: string;  // base64 data URL
+}) => {
+  try {
+    const { text, html, image } = params
+    
+    if (image) {
+      const img = nativeImage.createFromDataURL(image)
+      clipboard.writeImage(img)
+      return { success: true, type: 'image' }
+    }
+    
+    if (html) {
+      clipboard.writeHTML(html)
+      return { success: true, type: 'html' }
+    }
+    
+    if (text) {
+      clipboard.writeText(text)
+      return { success: true, type: 'text' }
+    }
+    
+    return { success: false, error: 'No content provided' }
+  } catch (error) {
+    return { success: false, error: 'Write clipboard failed: ' + error }
+  }
+})
+
+// ==================== 系统通知 API ====================
+
+// IPC 处理：发送系统通知
+ipcMain.handle('notify:send', async (_event, params: {
+  title: string;
+  body: string;
+  icon?: string;
+  silent?: boolean;
+}) => {
+  try {
+    const { title, body, icon, silent = false } = params
+    
+    const notification = new Notification({
+      title,
+      body,
+      icon: icon || undefined,
+      silent
+    })
+    
+    notification.show()
+    
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: 'Send notification failed: ' + error }
+  }
+})
+
+// ==================== 文件系统 API ====================
+
+// 安全路径检查
+function isPathSafe(targetPath: string): boolean {
+  const dangerous = [
+    'C:\\Windows',
+    'C:\\Program Files',
+    'C:\\Program Files (x86)',
+    'C:\\ProgramData',
+    'C:\\$',
+    'System32',
+  ]
+  const normalized = targetPath.replace(/\//g, '\\')
+  return !dangerous.some(d => normalized.toLowerCase().startsWith(d.toLowerCase()))
+}
+
+// IPC 处理：读取文件
+ipcMain.handle('fs:read-file', async (_event, params: {
+  path: string;
+  encoding?: string;
+}) => {
+  try {
+    const fs = await import('fs/promises')
+    const { path: filePath, encoding = 'utf-8' } = params
+    
+    const expandedPath = expandEnvVars(filePath)
+    const content = await fs.readFile(expandedPath, encoding as BufferEncoding)
+    
+    return { success: true, content, path: expandedPath }
+  } catch (error) {
+    return { success: false, error: 'Read file failed: ' + error }
+  }
+})
+
+// IPC 处理：写入文件
+ipcMain.handle('fs:write-file', async (_event, params: {
+  path: string;
+  content: string;
+  encoding?: string;
+}) => {
+  try {
+    const fs = await import('fs/promises')
+    const { path: filePath, content, encoding = 'utf-8' } = params
+    
+    const expandedPath = expandEnvVars(filePath)
+    
+    // 安全检查
+    if (!isPathSafe(expandedPath)) {
+      return { success: false, error: 'Cannot write to system directory' }
+    }
+    
+    // 确保目录存在
+    const dir = expandedPath.substring(0, expandedPath.lastIndexOf('\\'))
+    await fs.mkdir(dir, { recursive: true }).catch(() => {})
+    
+    await fs.writeFile(expandedPath, content, encoding as BufferEncoding)
+    
+    return { success: true, path: expandedPath }
+  } catch (error) {
+    return { success: false, error: 'Write file failed: ' + error }
+  }
+})
+
+// IPC 处理：列出目录
+ipcMain.handle('fs:list-directory', async (_event, params: {
+  path: string;
+  recursive?: boolean;
+}) => {
+  try {
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const { path: dirPath, recursive = false } = params
+    
+    const expandedPath = expandEnvVars(dirPath)
+    const entries = await fs.readdir(expandedPath, { withFileTypes: true })
+    
+    const items = await Promise.all(entries.map(async (entry) => {
+      const fullPath = path.join(expandedPath, entry.name)
+      let stats = null
+      try {
+        stats = await fs.stat(fullPath)
+      } catch {}
+      
+      return {
+        name: entry.name,
+        path: fullPath,
+        isDirectory: entry.isDirectory(),
+        isFile: entry.isFile(),
+        size: stats?.size || 0,
+        modified: stats?.mtime?.toISOString() || ''
+      }
+    }))
+    
+    return { success: true, items, path: expandedPath }
+  } catch (error) {
+    return { success: false, error: 'List directory failed: ' + error }
+  }
+})
+
+// IPC 处理：创建目录
+ipcMain.handle('fs:create-directory', async (_event, params: { path: string }) => {
+  try {
+    const fs = await import('fs/promises')
+    const expandedPath = expandEnvVars(params.path)
+    
+    if (!isPathSafe(expandedPath)) {
+      return { success: false, error: 'Cannot create directory in system location' }
+    }
+    
+    await fs.mkdir(expandedPath, { recursive: true })
+    return { success: true, path: expandedPath }
+  } catch (error) {
+    return { success: false, error: 'Create directory failed: ' + error }
+  }
+})
+
+// IPC 处理：删除文件/目录
+ipcMain.handle('fs:delete', async (_event, params: { path: string; recursive?: boolean }) => {
+  try {
+    const fs = await import('fs/promises')
+    const expandedPath = expandEnvVars(params.path)
+    
+    if (!isPathSafe(expandedPath)) {
+      return { success: false, error: 'Cannot delete system files' }
+    }
+    
+    await fs.rm(expandedPath, { recursive: params.recursive || false })
+    return { success: true, path: expandedPath }
+  } catch (error) {
+    return { success: false, error: 'Delete failed: ' + error }
+  }
+})
+
+// IPC 处理：移动/重命名文件
+ipcMain.handle('fs:move', async (_event, params: { from: string; to: string }) => {
+  try {
+    const fs = await import('fs/promises')
+    const fromPath = expandEnvVars(params.from)
+    const toPath = expandEnvVars(params.to)
+    
+    if (!isPathSafe(toPath)) {
+      return { success: false, error: 'Cannot move to system location' }
+    }
+    
+    await fs.rename(fromPath, toPath)
+    return { success: true, from: fromPath, to: toPath }
+  } catch (error) {
+    return { success: false, error: 'Move failed: ' + error }
+  }
+})
+
+// IPC 处理：搜索文件
+ipcMain.handle('fs:search', async (_event, params: {
+  path: string;
+  pattern: string;
+  maxResults?: number;
+}) => {
+  try {
+    const { path: searchPath, pattern, maxResults = 100 } = params
+    const expandedPath = expandEnvVars(searchPath)
+    
+    // 使用 PowerShell 搜索
+    const script = `Get-ChildItem -Path "${expandedPath}" -Recurse -Filter "${pattern}" -ErrorAction SilentlyContinue | Select-Object -First ${maxResults} | ForEach-Object { $_.FullName }`
+    
+    const { stdout } = await execAsync(`powershell -Command "${script}"`, {
+      windowsHide: true,
+      timeout: 30000
+    })
+    
+    const files = stdout.trim().split('\n').filter(f => f.trim())
+    return { success: true, files, count: files.length }
+  } catch (error) {
+    return { success: false, error: 'Search failed: ' + error }
+  }
+})
+
+// IPC 处理：获取文件信息
+ipcMain.handle('fs:get-info', async (_event, params: { path: string }) => {
+  try {
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const expandedPath = expandEnvVars(params.path)
+    
+    const stats = await fs.stat(expandedPath)
+    
+    return {
+      success: true,
+      info: {
+        path: expandedPath,
+        name: path.basename(expandedPath),
+        isDirectory: stats.isDirectory(),
+        isFile: stats.isFile(),
+        size: stats.size,
+        created: stats.birthtime.toISOString(),
+        modified: stats.mtime.toISOString(),
+        accessed: stats.atime.toISOString()
+      }
+    }
+  } catch (error) {
+    return { success: false, error: 'Get info failed: ' + error }
+  }
+})
+
+// ==================== 进程管理 API ====================
+
+// IPC 处理：列出进程
+ipcMain.handle('process:list', async () => {
+  try {
+    const { stdout } = await execAsync('tasklist /FO CSV /NH', {
+      windowsHide: true,
+      timeout: 10000
+    })
+    
+    const processes = stdout.trim().split('\n').map(line => {
+      const parts = line.split('","').map(p => p.replace(/"/g, ''))
+      return {
+        name: parts[0],
+        pid: parseInt(parts[1]) || 0,
+        memory: parts[4] || ''
+      }
+    }).filter(p => p.pid > 0)
+    
+    return { success: true, processes }
+  } catch (error) {
+    return { success: false, error: 'List processes failed: ' + error }
+  }
+})
+
+// IPC 处理：结束进程
+ipcMain.handle('process:kill', async (_event, params: { pid?: number; name?: string }) => {
+  try {
+    const { pid, name } = params
+    
+    // 安全检查 - 禁止杀死系统进程
+    const protectedProcesses = ['explorer', 'csrss', 'winlogon', 'services', 'lsass', 'svchost']
+    if (name && protectedProcesses.some(p => name.toLowerCase().includes(p))) {
+      return { success: false, error: 'Cannot kill system process' }
+    }
+    
+    let cmd = ''
+    if (pid) {
+      cmd = `taskkill /PID ${pid} /F`
+    } else if (name) {
+      cmd = `taskkill /IM "${name}" /F`
+    } else {
+      return { success: false, error: 'Must provide PID or process name' }
+    }
+    
+    await execAsync(cmd, { windowsHide: true, timeout: 10000 })
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: 'Kill process failed: ' + error }
+  }
+})
+
+// IPC 处理：获取系统资源使用情况
+ipcMain.handle('process:usage', async () => {
+  try {
+    const os = await import('os')
+    
+    // CPU 使用率（简化版）
+    const cpus = os.cpus()
+    let totalIdle = 0
+    let totalTick = 0
+    for (const cpu of cpus) {
+      for (const type in cpu.times) {
+        totalTick += (cpu.times as any)[type]
+      }
+      totalIdle += cpu.times.idle
+    }
+    const cpuUsage = 100 - (totalIdle / totalTick * 100)
+    
+    // 内存使用
+    const totalMem = os.totalmem()
+    const freeMem = os.freemem()
+    const usedMem = totalMem - freeMem
+    const memUsage = (usedMem / totalMem) * 100
+    
+    return {
+      success: true,
+      cpu: {
+        usage: Math.round(cpuUsage),
+        cores: cpus.length
+      },
+      memory: {
+        total: Math.round(totalMem / 1024 / 1024 / 1024 * 10) / 10,
+        used: Math.round(usedMem / 1024 / 1024 / 1024 * 10) / 10,
+        free: Math.round(freeMem / 1024 / 1024 / 1024 * 10) / 10,
+        usage: Math.round(memUsage)
+      }
+    }
+  } catch (error) {
+    return { success: false, error: 'Get usage failed: ' + error }
+  }
+})
+
+// ==================== 屏幕截图 API ====================
+
+// IPC 处理：截取屏幕
+ipcMain.handle('screen:capture', async () => {
+  try {
+    // 首先尝试使用 desktopCapturer
+    try {
+      const sources = await desktopCapturer.getSources({ 
+        types: ['screen'],
+        thumbnailSize: { width: 1920, height: 1080 }
+      })
+      
+      if (sources.length > 0) {
+        const source = sources[0]
+        const image = source.thumbnail
+        if (!image.isEmpty()) {
+          const base64 = image.toDataURL()
+          const size = image.getSize()
+          
+          return { 
+            success: true, 
+            image: base64, 
+            size,
+            name: source.name
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[CFSpider] desktopCapturer failed, trying PowerShell:', e)
+    }
+    
+    // 备选方案：使用 PowerShell 截图
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const os = await import('os')
+    
+    const tempPath = path.join(os.tmpdir(), 'cfspider_screenshot_' + Date.now() + '.png')
+    
+    const psScript = `
+      Add-Type -AssemblyName System.Windows.Forms
+      Add-Type -AssemblyName System.Drawing
+      $screen = [System.Windows.Forms.Screen]::PrimaryScreen
+      $bitmap = New-Object System.Drawing.Bitmap($screen.Bounds.Width, $screen.Bounds.Height)
+      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+      $graphics.CopyFromScreen($screen.Bounds.Location, [System.Drawing.Point]::Empty, $screen.Bounds.Size)
+      $bitmap.Save("${tempPath.replace(/\\/g, '\\\\')}")
+      $graphics.Dispose()
+      $bitmap.Dispose()
+      Write-Output "$($screen.Bounds.Width),$($screen.Bounds.Height)"
+    `
+    
+    const { stdout } = await execAsync(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 15000
+    })
+    
+    // 读取截图文件
+    const imageBuffer = await fs.readFile(tempPath)
+    const base64 = 'data:image/png;base64,' + imageBuffer.toString('base64')
+    
+    // 解析尺寸
+    const [width, height] = stdout.trim().split(',').map(Number)
+    
+    // 删除临时文件
+    await fs.unlink(tempPath).catch(() => {})
+    
+    return { 
+      success: true, 
+      image: base64, 
+      size: { width, height },
+      name: 'Screen (PowerShell)'
+    }
+  } catch (error) {
+    return { success: false, error: 'Screen capture failed: ' + error }
+  }
+})
+
+// IPC 处理：列出窗口
+ipcMain.handle('screen:list-windows', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({ 
+      types: ['window'],
+      thumbnailSize: { width: 200, height: 150 }
+    })
+    
+    const windows = sources.map(s => ({
+      id: s.id,
+      name: s.name,
+      thumbnail: s.thumbnail.toDataURL()
+    }))
+    
+    return { success: true, windows }
+  } catch (error) {
+    return { success: false, error: 'List windows failed: ' + error }
+  }
+})
+
+// IPC 处理：截取指定窗口
+ipcMain.handle('screen:capture-window', async (_event, params: { name: string }) => {
+  try {
+    // 首先尝试使用 desktopCapturer
+    try {
+      const sources = await desktopCapturer.getSources({ 
+        types: ['window'],
+        thumbnailSize: { width: 1920, height: 1080 }
+      })
+      
+      const source = sources.find(s => s.name.toLowerCase().includes(params.name.toLowerCase()))
+      
+      if (source && !source.thumbnail.isEmpty()) {
+        const image = source.thumbnail
+        const base64 = image.toDataURL()
+        const size = image.getSize()
+        
+        return { 
+          success: true, 
+          image: base64, 
+          size,
+          name: source.name
+        }
+      }
+    } catch (e) {
+      console.log('[CFSpider] desktopCapturer for window failed:', e)
+    }
+    
+    // 备选方案：先激活窗口，再截取整个屏幕
+    // 激活窗口
+    const focusScript = `
+      Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinAPI {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+      $windows = Get-Process | Where-Object { $_.MainWindowTitle -like "*${params.name.replace(/"/g, '`"')}*" }
+      if ($windows.Count -gt 0) {
+        $hwnd = $windows[0].MainWindowHandle
+        [WinAPI]::ShowWindow($hwnd, 9)
+        [WinAPI]::SetForegroundWindow($hwnd)
+        Write-Output $windows[0].MainWindowTitle
+      } else {
+        Write-Output "NOT_FOUND"
+      }
+    `
+    
+    const { stdout: focusResult } = await execAsync(`powershell -Command "${focusScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 5000
+    })
+    
+    if (focusResult.trim() === 'NOT_FOUND') {
+      return { success: false, error: 'Window not found: ' + params.name }
+    }
+    
+    // 等待窗口激活
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 截取当前屏幕（窗口已在前台）
+    const fs = await import('fs/promises')
+    const path = await import('path')
+    const os = await import('os')
+    
+    const tempPath = path.join(os.tmpdir(), 'cfspider_window_' + Date.now() + '.png')
+    
+    const psScript = `
+      Add-Type -AssemblyName System.Windows.Forms
+      Add-Type -AssemblyName System.Drawing
+      $screen = [System.Windows.Forms.Screen]::PrimaryScreen
+      $bitmap = New-Object System.Drawing.Bitmap($screen.Bounds.Width, $screen.Bounds.Height)
+      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+      $graphics.CopyFromScreen($screen.Bounds.Location, [System.Drawing.Point]::Empty, $screen.Bounds.Size)
+      $bitmap.Save("${tempPath.replace(/\\/g, '\\\\')}")
+      $graphics.Dispose()
+      $bitmap.Dispose()
+      Write-Output "$($screen.Bounds.Width),$($screen.Bounds.Height)"
+    `
+    
+    const { stdout } = await execAsync(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+      windowsHide: true,
+      timeout: 15000
+    })
+    
+    const imageBuffer = await fs.readFile(tempPath)
+    const base64 = 'data:image/png;base64,' + imageBuffer.toString('base64')
+    const [width, height] = stdout.trim().split(',').map(Number)
+    
+    await fs.unlink(tempPath).catch(() => {})
+    
+    return { 
+      success: true, 
+      image: base64, 
+      size: { width, height },
+      name: focusResult.trim()
+    }
+  } catch (error) {
+    return { success: false, error: 'Capture window failed: ' + error }
+  }
+})
+
+// ==================== 定时任务 API ====================
+
+interface ScheduledTask {
+  id: string
+  type: 'reminder' | 'scheduled'
+  title: string
+  message: string
+  triggerTime: number  // Unix timestamp
+  interval?: number    // 重复间隔（毫秒），0 表示不重复
+  created: number
+  active: boolean
+}
+
+// 内存中的任务列表
+let scheduledTasks: ScheduledTask[] = []
+const taskTimers: Map<string, NodeJS.Timeout> = new Map()
+
+// 加载保存的任务
+async function loadScheduledTasks() {
+  try {
+    const fs = await import('fs/promises')
+    const tasksPath = join(app.getPath('userData'), 'scheduled-tasks.json')
+    const content = await fs.readFile(tasksPath, 'utf-8')
+    scheduledTasks = JSON.parse(content)
+    
+    // 恢复活动的任务
+    for (const task of scheduledTasks) {
+      if (task.active) {
+        scheduleTask(task)
+      }
+    }
+    
+    console.log('[CFSpider] Loaded', scheduledTasks.length, 'scheduled tasks')
+  } catch {
+    scheduledTasks = []
+  }
+}
+
+// 保存任务
+async function saveScheduledTasks() {
+  try {
+    const fs = await import('fs/promises')
+    const tasksPath = join(app.getPath('userData'), 'scheduled-tasks.json')
+    await fs.writeFile(tasksPath, JSON.stringify(scheduledTasks, null, 2))
+  } catch (e) {
+    console.error('[CFSpider] Save tasks failed:', e)
+  }
+}
+
+// 调度单个任务
+function scheduleTask(task: ScheduledTask) {
+  // 清除旧的定时器
+  const existingTimer = taskTimers.get(task.id)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+  }
+  
+  const now = Date.now()
+  let delay = task.triggerTime - now
+  
+  // 如果时间已过，对于重复任务计算下一次触发时间
+  if (delay < 0) {
+    if (task.interval && task.interval > 0) {
+      // 计算下一次触发时间
+      const missedIntervals = Math.ceil(-delay / task.interval)
+      task.triggerTime += missedIntervals * task.interval
+      delay = task.triggerTime - now
+    } else {
+      // 非重复任务已过期，标记为不活动
+      task.active = false
+      saveScheduledTasks()
+      return
+    }
+  }
+  
+  const timer = setTimeout(() => {
+    // 触发任务 - 发送通知
+    const notification = new Notification({
+      title: task.title,
+      body: task.message
+    })
+    notification.show()
+    
+    // 通知渲染进程
+    if (mainWindow) {
+      mainWindow.webContents.send('task:triggered', task)
+    }
+    
+    // 如果是重复任务，重新调度
+    if (task.interval && task.interval > 0) {
+      task.triggerTime += task.interval
+      scheduleTask(task)
+      saveScheduledTasks()
+    } else {
+      // 非重复任务，标记为不活动
+      task.active = false
+      taskTimers.delete(task.id)
+      saveScheduledTasks()
+    }
+  }, Math.min(delay, 2147483647)) // setTimeout 最大值约 24.8 天
+  
+  taskTimers.set(task.id, timer)
+}
+
+// 生成任务 ID
+function generateTaskId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+// 在应用启动时加载任务
+app.whenReady().then(() => {
+  loadScheduledTasks()
+})
+
+// IPC 处理：创建提醒
+ipcMain.handle('scheduler:create-reminder', async (_event, params: {
+  title: string
+  message: string
+  delay: number  // 延迟时间（毫秒）
+}) => {
+  try {
+    const { title, message, delay } = params
+    
+    const task: ScheduledTask = {
+      id: generateTaskId(),
+      type: 'reminder',
+      title,
+      message,
+      triggerTime: Date.now() + delay,
+      interval: 0,
+      created: Date.now(),
+      active: true
+    }
+    
+    scheduledTasks.push(task)
+    scheduleTask(task)
+    await saveScheduledTasks()
+    
+    const triggerDate = new Date(task.triggerTime)
+    return { 
+      success: true, 
+      id: task.id,
+      triggerTime: triggerDate.toLocaleString()
+    }
+  } catch (error) {
+    return { success: false, error: 'Create reminder failed: ' + error }
+  }
+})
+
+// IPC 处理：创建定时任务
+ipcMain.handle('scheduler:create-task', async (_event, params: {
+  title: string
+  message: string
+  time: string  // ISO 时间字符串或 HH:MM 格式
+  repeat?: 'daily' | 'hourly' | 'weekly' | 'none'
+}) => {
+  try {
+    const { title, message, time, repeat = 'none' } = params
+    
+    let triggerTime: number
+    
+    // 解析时间
+    if (time.includes('T') || time.includes('-')) {
+      // ISO 格式
+      triggerTime = new Date(time).getTime()
+    } else if (time.includes(':')) {
+      // HH:MM 格式，今天的这个时间
+      const [hours, minutes] = time.split(':').map(Number)
+      const now = new Date()
+      now.setHours(hours, minutes, 0, 0)
+      if (now.getTime() < Date.now()) {
+        // 如果今天已过，设为明天
+        now.setDate(now.getDate() + 1)
+      }
+      triggerTime = now.getTime()
+    } else {
+      return { success: false, error: 'Invalid time format' }
+    }
+    
+    // 计算重复间隔
+    let interval = 0
+    switch (repeat) {
+      case 'hourly': interval = 60 * 60 * 1000; break
+      case 'daily': interval = 24 * 60 * 60 * 1000; break
+      case 'weekly': interval = 7 * 24 * 60 * 60 * 1000; break
+    }
+    
+    const task: ScheduledTask = {
+      id: generateTaskId(),
+      type: 'scheduled',
+      title,
+      message,
+      triggerTime,
+      interval,
+      created: Date.now(),
+      active: true
+    }
+    
+    scheduledTasks.push(task)
+    scheduleTask(task)
+    await saveScheduledTasks()
+    
+    const triggerDate = new Date(task.triggerTime)
+    return { 
+      success: true, 
+      id: task.id,
+      triggerTime: triggerDate.toLocaleString(),
+      repeat
+    }
+  } catch (error) {
+    return { success: false, error: 'Create task failed: ' + error }
+  }
+})
+
+// IPC 处理：列出所有任务
+ipcMain.handle('scheduler:list', async () => {
+  try {
+    const tasks = scheduledTasks.map(t => ({
+      id: t.id,
+      type: t.type,
+      title: t.title,
+      message: t.message,
+      triggerTime: new Date(t.triggerTime).toLocaleString(),
+      repeat: t.interval ? (
+        t.interval >= 7 * 24 * 60 * 60 * 1000 ? 'weekly' :
+        t.interval >= 24 * 60 * 60 * 1000 ? 'daily' :
+        t.interval >= 60 * 60 * 1000 ? 'hourly' : 'custom'
+      ) : 'none',
+      active: t.active
+    }))
+    
+    return { success: true, tasks }
+  } catch (error) {
+    return { success: false, error: 'List tasks failed: ' + error }
+  }
+})
+
+// IPC 处理：取消任务
+ipcMain.handle('scheduler:cancel', async (_event, params: { id: string }) => {
+  try {
+    const { id } = params
+    
+    const taskIndex = scheduledTasks.findIndex(t => t.id === id)
+    if (taskIndex === -1) {
+      return { success: false, error: 'Task not found' }
+    }
+    
+    // 清除定时器
+    const timer = taskTimers.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      taskTimers.delete(id)
+    }
+    
+    // 从列表中移除
+    scheduledTasks.splice(taskIndex, 1)
+    await saveScheduledTasks()
+    
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: 'Cancel task failed: ' + error }
+  }
 })

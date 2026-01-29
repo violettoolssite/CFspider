@@ -119,6 +119,24 @@ export interface ElementSelectionRequest {
   selector?: string  // 选择的选择器
 }
 
+// 心跳通知
+export type HeartbeatNotificationType = 'page_change' | 'reminder' | 'skill_suggestion' | 'task_complete' | 'error_recovery' | 'login_detected'
+
+export interface HeartbeatNotification {
+  id: string
+  type: HeartbeatNotificationType
+  title: string
+  message: string
+  priority: 'low' | 'medium' | 'high'
+  createdAt: number
+  actions?: {
+    id: string
+    label: string
+    primary?: boolean
+  }[]
+  data?: Record<string, unknown>
+}
+
 // 浏览器设置
 export interface BrowserSettings {
   searchEngine: string  // 搜索引擎 ID
@@ -187,6 +205,34 @@ interface AppState {
   
   // 元素选择请求
   elementSelectionRequest: ElementSelectionRequest | null
+  
+  // 心跳通知
+  heartbeatNotifications: HeartbeatNotification[]
+  heartbeatEnabled: boolean
+  
+  // Token 消耗统计
+  tokenUsage: {
+    total: number
+    // 按类型分类
+    byType: {
+      chat: number      // 普通对话
+      tool: number      // 工具调用
+      vision: number    // 视觉模型
+    }
+    models: {
+      [modelName: string]: {
+        promptTokens: number
+        completionTokens: number
+        totalTokens: number
+        requestCount: number
+        type: 'chat' | 'tool' | 'vision'
+      }
+    }
+    // 速率跟踪
+    recentChanges: { timestamp: number; amount: number }[]
+    currentRate: number // tokens per second
+    rateDirection: 'up' | 'down' | 'stable'
+  }
   
   // 标签页 Actions
   addTab: (url?: string) => void
@@ -267,6 +313,19 @@ interface AppState {
   // 元素选择请求
   setElementSelectionRequest: (request: ElementSelectionRequest | null) => void
   respondToElementSelection: (mode: 'auto' | 'manual', selector?: string) => void
+  
+  // 心跳通知
+  setHeartbeatEnabled: (enabled: boolean) => void
+  addHeartbeatNotification: (notification: HeartbeatNotification) => void
+  removeHeartbeatNotification: (id: string) => void
+  clearHeartbeatNotifications: () => void
+  handleHeartbeatAction: (notificationId: string, actionId: string) => void
+  
+  // Token 消耗统计
+  addTokenUsage: (modelName: string, promptTokens: number, completionTokens: number, type?: 'chat' | 'tool' | 'vision') => void
+  updateTokenRateDirection: () => void
+  resetTokenUsage: () => void
+  getTokenUsage: () => { total: number; byType: { chat: number; tool: number; vision: number }; models: { [key: string]: { promptTokens: number; completionTokens: number; totalTokens: number; requestCount: number; type: 'chat' | 'tool' | 'vision' } }; recentChanges: { timestamp: number; amount: number }[]; currentRate: number; rateDirection: 'up' | 'down' | 'stable' }
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -316,6 +375,20 @@ export const useStore = create<AppState>((set, get) => ({
   },
   downloadedImages: [],
   elementSelectionRequest: null,
+  heartbeatNotifications: [],
+  heartbeatEnabled: true,
+  tokenUsage: {
+    total: 0,
+    byType: {
+      chat: 0,
+      tool: 0,
+      vision: 0
+    },
+    models: {},
+    recentChanges: [],
+    currentRate: 0,
+    rateDirection: 'stable' as const
+  },
 
   // 标签页 Actions
   addTab: (url) => {
@@ -855,5 +928,219 @@ export const useStore = create<AppState>((set, get) => ({
         }
       })
     }
-  }
+  },
+  
+  // 心跳通知
+  setHeartbeatEnabled: (enabled) => set({ heartbeatEnabled: enabled }),
+  
+  addHeartbeatNotification: (notification) => set((state) => ({
+    heartbeatNotifications: [notification, ...state.heartbeatNotifications].slice(0, 20)
+  })),
+  
+  removeHeartbeatNotification: (id) => set((state) => ({
+    heartbeatNotifications: state.heartbeatNotifications.filter(n => n.id !== id)
+  })),
+  
+  clearHeartbeatNotifications: () => set({ heartbeatNotifications: [] }),
+  
+  handleHeartbeatAction: (notificationId, actionId) => {
+    const notification = get().heartbeatNotifications.find(n => n.id === notificationId)
+    if (!notification) return
+    
+    console.log('[Heartbeat] 处理通知动作:', notificationId, actionId, notification.type)
+    
+    // 根据动作类型处理
+    switch (actionId) {
+      case 'dismiss':
+        get().removeHeartbeatNotification(notificationId)
+        break
+      case 'close_modal':
+        // 触发关闭弹窗操作
+        const webview = document.querySelector('webview') as any
+        if (webview) {
+          webview.executeJavaScript(`
+            (function() {
+              const closeSelectors = [
+                '.modal .close', '.modal-close', '.dialog-close',
+                '[aria-label="Close"]', '.popup-close', '.overlay-close',
+                '.modal button:contains("关闭")', '.modal button:contains("取消")'
+              ];
+              for (const sel of closeSelectors) {
+                const btn = document.querySelector(sel);
+                if (btn) { btn.click(); break; }
+              }
+            })()
+          `)
+        }
+        get().removeHeartbeatNotification(notificationId)
+        break
+      case 'retry':
+        // 重试操作 - 可以通过消息触发
+        get().addMessage({
+          role: 'user',
+          content: '请重试刚才失败的操作'
+        })
+        get().removeHeartbeatNotification(notificationId)
+        break
+      case 'auto_login':
+        // 自动登录 - 触发登录选择流程
+        get().addMessage({
+          role: 'user',
+          content: '自动登录'
+        })
+        get().removeHeartbeatNotification(notificationId)
+        break
+      case 'manual_login':
+        // 手动登录 - 只是移除通知
+        get().removeHeartbeatNotification(notificationId)
+        break
+      case 'create_skill':
+        // 创建技能
+        const domain = notification.data?.domain as string
+        if (domain) {
+          get().addMessage({
+            role: 'user',
+            content: `为 ${domain} 创建一个快捷技能`
+          })
+        }
+        get().removeHeartbeatNotification(notificationId)
+        break
+      default:
+        // 默认移除通知
+        get().removeHeartbeatNotification(notificationId)
+    }
+  },
+  
+  // Token 消耗统计
+  addTokenUsage: (modelName, promptTokens, completionTokens, type = 'tool') => {
+    set((state) => {
+      const totalTokens = promptTokens + completionTokens
+      const now = Date.now()
+      
+      const currentModel = state.tokenUsage.models[modelName] || {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        requestCount: 0,
+        type
+      }
+      
+      // 记录最近的变化（保留最近 5 秒内的记录）
+      const recentChanges = [
+        ...state.tokenUsage.recentChanges.filter(c => now - c.timestamp < 5000),
+        { timestamp: now, amount: totalTokens }
+      ]
+      
+      // 计算速率（tokens per second）
+      const oldestChange = recentChanges[0]
+      const timeSpan = (now - oldestChange.timestamp) / 1000 || 1
+      const totalRecentTokens = recentChanges.reduce((sum, c) => sum + c.amount, 0)
+      const currentRate = totalRecentTokens / timeSpan
+      
+      // 判断速率方向
+      const previousRate = state.tokenUsage.currentRate
+      let rateDirection: 'up' | 'down' | 'stable' = 'stable'
+      if (currentRate > previousRate * 1.2) {
+        rateDirection = 'up'
+      } else if (currentRate < previousRate * 0.8 && previousRate > 0) {
+        rateDirection = 'down'
+      } else if (currentRate > 10) {
+        // 如果速率较高，保持向上
+        rateDirection = 'up'
+      }
+      
+      // 更新按类型统计
+      const byType = { ...state.tokenUsage.byType }
+      byType[type] = (byType[type] || 0) + totalTokens
+      
+      return {
+        tokenUsage: {
+          total: state.tokenUsage.total + totalTokens,
+          byType,
+          models: {
+            ...state.tokenUsage.models,
+            [modelName]: {
+              promptTokens: currentModel.promptTokens + promptTokens,
+              completionTokens: currentModel.completionTokens + completionTokens,
+              totalTokens: currentModel.totalTokens + totalTokens,
+              requestCount: currentModel.requestCount + 1,
+              type
+            }
+          },
+          recentChanges,
+          currentRate,
+          rateDirection
+        }
+      }
+    })
+  },
+  
+  // 更新速率方向（用于定时检查）
+  updateTokenRateDirection: () => {
+    set((state) => {
+      const now = Date.now()
+      // 清理 5 秒前的记录
+      const recentChanges = state.tokenUsage.recentChanges.filter(c => now - c.timestamp < 5000)
+      
+      if (recentChanges.length === 0) {
+        return {
+          tokenUsage: {
+            ...state.tokenUsage,
+            recentChanges: [],
+            currentRate: 0,
+            rateDirection: 'stable' as const
+          }
+        }
+      }
+      
+      // 重新计算速率
+      const oldestChange = recentChanges[0]
+      const timeSpan = (now - oldestChange.timestamp) / 1000 || 1
+      const totalRecentTokens = recentChanges.reduce((sum, c) => sum + c.amount, 0)
+      const currentRate = totalRecentTokens / timeSpan
+      
+      // 判断方向
+      const previousRate = state.tokenUsage.currentRate
+      let rateDirection: 'up' | 'down' | 'stable' = 'stable'
+      
+      if (recentChanges.length > 0 && now - recentChanges[recentChanges.length - 1].timestamp < 2000) {
+        // 最近 2 秒内有变化
+        if (currentRate > previousRate * 1.1) {
+          rateDirection = 'up'
+        } else if (currentRate > 50) {
+          rateDirection = 'up'
+        } else if (currentRate > 10) {
+          rateDirection = currentRate < previousRate * 0.9 ? 'down' : 'up'
+        } else {
+          rateDirection = 'down'
+        }
+      }
+      
+      return {
+        tokenUsage: {
+          ...state.tokenUsage,
+          recentChanges,
+          currentRate,
+          rateDirection
+        }
+      }
+    })
+  },
+  
+  resetTokenUsage: () => set({
+    tokenUsage: {
+      total: 0,
+      byType: {
+        chat: 0,
+        tool: 0,
+        vision: 0
+      },
+      models: {},
+      recentChanges: [],
+      currentRate: 0,
+      rateDirection: 'stable' as const
+    }
+  }),
+  
+  getTokenUsage: () => get().tokenUsage
 }))
