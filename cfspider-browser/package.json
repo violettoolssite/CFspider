@@ -1,17 +1,54 @@
 {
   "name": "cfspider-browser",
   "version": "1.0.0",
-  "description": "cfspider-智能浏览器 - 可视化爬虫，AI驱动，点击即可爬取",
+  "description": "CFspider 智能浏览器 - AI驱动的可视化爬虫，自然语言控制浏览器自动化",
+  "keywords": [
+    "browser",
+    "automation",
+    "ai",
+    "crawler",
+    "scraper",
+    "electron",
+    "cfspider",
+    "deepseek",
+    "ollama"
+  ],
   "author": {
     "name": "violettoolssite",
     "email": "violettoolssite@gmail.com"
   },
+  "license": "Apache-2.0",
+  "homepage": "https://www.cfspider.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/violettoolssite/CFspider.git"
+    "url": "https://github.com/violettoolssite/CFspider.git",
+    "directory": "cfspider-browser"
+  },
+  "bugs": {
+    "url": "https://github.com/violettoolssite/CFspider/issues"
   },
   "main": "dist-electron/main.js",
+  "bin": {
+    "cfspider-browser": "./bin/cli.js"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "electron/**/*",
+    "src/**/*",
+    "public/**/*",
+    "bin/**/*",
+    "index.html",
+    "vite.config.ts",
+    "tsconfig.json",
+    "tsconfig.node.json",
+    "tailwind.config.js",
+    "postcss.config.js",
+    "electron-builder.json",
+    "README.md"
+  ],
   "scripts": {
+    "postinstall": "echo 'Run: npx cfspider-browser' to start",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

@@ -1,6 +1,7 @@
 # CFspider - Cloudflare Workers 代理 IP 池 + AI 智能浏览器
 
 [![PyPI version](https://img.shields.io/pypi/v/cfspider)](https://pypi.org/project/cfspider/)
+[![npm version](https://img.shields.io/npm/v/cfspider-browser)](https://www.npmjs.com/package/cfspider-browser)
 [![Python](https://img.shields.io/pypi/pyversions/cfspider)](https://pypi.org/project/cfspider/)
 [![License](https://img.shields.io/github/license/violettoolssite/CFspider)](LICENSE)
 
@@ -14,28 +15,50 @@
 
 ---
 
-## 智能浏览器（NEW）
+## 🚀 快速安装
+
+### 智能浏览器（Electron 桌面应用）
+
+```bash
+# 方式一：npm 全局安装（推荐）
+npm install -g cfspider-browser
+cfspider-browser
+
+# 方式二：npx 直接运行
+npx cfspider-browser
+
+# 方式三：克隆仓库
+git clone https://github.com/violettoolssite/CFspider.git
+cd CFspider/cfspider-browser
+npm install && npm run electron:dev
+```
+
+### Python 代理库
+
+```bash
+# 官方加速源（东京服务器，推荐）
+pip install -i https://server.cfspider.com/simple/ cfspider
+
+# 或使用 PyPI
+pip install cfspider
+```
+
+---
+
+## 智能浏览器
 
 AI 驱动的桌面浏览器，通过自然语言对话控制浏览器自动化。
 
 **对话示例：**
 ```
 用户: 打开京东
-AI: 好的，让我通过搜索引擎找到京东...
+AI: 正在通过搜索引擎找到京东...
     [跳转 Bing] → [搜索"京东"] → [点击官网链接]
-AI: 已打开京东官网！
+AI: 已打开京东官网。
 
 用户: 搜索男装
-AI: 正在京东搜索框输入"男装"...
-    [输入文本] → [回车]
+AI: 正在输入"男装"...
 AI: 搜索完成，已显示男装商品列表。
-```
-
-**快速开始：**
-```bash
-cd cfspider-browser
-npm install
-npm run electron:dev
 ```
 
 **支持的 AI 服务商：**
