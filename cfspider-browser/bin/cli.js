@@ -19,11 +19,23 @@ const command = args[0] || 'dev';
 // 获取包的根目录
 const packageRoot = path.resolve(__dirname, '..');
 
+// 调试信息
+console.log('[DEBUG] __dirname:', __dirname);
+console.log('[DEBUG] packageRoot:', packageRoot);
+
 // 检查是否在正确的目录
 const packageJsonPath = path.join(packageRoot, 'package.json');
 if (!fs.existsSync(packageJsonPath)) {
   console.error('Error: package.json not found');
   process.exit(1);
+}
+
+// 读取并显示版本
+try {
+  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  console.log('[DEBUG] package.json version:', pkg.version);
+} catch (e) {
+  console.error('[DEBUG] Failed to read package.json:', e.message);
 }
 
 // 检查依赖是否已安装
