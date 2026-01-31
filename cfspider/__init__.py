@@ -75,7 +75,7 @@ from .api import (
     clear_map_records, get_map_collector, stop_vless_proxies
 )
 from .session import Session
-from .cli import install_browser
+from .cli import install_browser, configure_pip_source, CFSPIDER_PIP_INDEX
 
 # IP 地图可视化
 from .ip_map import (
@@ -260,6 +260,8 @@ __all__ = [
     "get", "post", "put", "delete", "head", "options", "patch", "request",
     "Session", "Browser", "install_browser", "parse_vless_link", "stop_vless_proxies",
     "CFSpiderError", "BrowserNotInstalledError", "PlaywrightNotInstalledError",
+    # pip 源配置
+    "configure_pip_source", "CFSPIDER_PIP_INDEX",
     # 异步 API (httpx)
     "aget", "apost", "aput", "adelete", "ahead", "aoptions", "apatch",
     "arequest", "astream",
