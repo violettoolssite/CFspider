@@ -7,15 +7,22 @@ export default defineConfig({
   base: './',
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': resolve(__dirname, 'src'),
+      'use-sync-external-store/shim/with-selector': 'use-sync-external-store/shim/with-selector.js'
     }
   },
   optimizeDeps: {
-    include: ['zustand', 'use-sync-external-store/shim/with-selector']
+    include: ['zustand', 'use-sync-external-store', 'use-sync-external-store/shim/with-selector'],
+    esbuildOptions: {
+      mainFields: ['module', 'main']
+    }
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    commonjsOptions: {
+      include: [/use-sync-external-store/, /node_modules/]
+    }
   },
   server: {
     port: 5173
