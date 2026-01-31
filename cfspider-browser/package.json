@@ -1,6 +1,6 @@
 {
   "name": "cfspider-browser",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "CFspider 智能浏览器 - AI驱动的可视化爬虫，自然语言控制浏览器自动化",
   "keywords": [
     "browser",
@@ -28,9 +28,7 @@
     "url": "https://github.com/violettoolssite/CFspider/issues"
   },
   "main": "dist-electron/main.js",
-  "bin": {
-    "cfspider-browser": "bin/cli.js"
-  },
+  "bin": "./bin/cli.js",
   "files": [
     "dist/**/*",
     "dist-electron/**/*",

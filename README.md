@@ -20,18 +20,24 @@
 ### 智能浏览器（Electron 桌面应用）
 
 ```bash
-# 方式一：npm 全局安装（推荐）
-npm install -g cfspider-browser
+# 方式一：官方加速源安装（推荐，东京服务器）
+npm install -g cfspider-browser --registry=https://npm.cfspider.com
 cfspider-browser
 
 # 方式二：npx 直接运行
-npx cfspider-browser
+npx cfspider-browser --registry=https://npm.cfspider.com
 
-# 方式三：克隆仓库
+# 方式三：npmjs.org 安装
+npm install -g cfspider-browser
+cfspider-browser
+
+# 方式四：克隆仓库
 git clone https://github.com/violettoolssite/CFspider.git
 cd CFspider/cfspider-browser
 npm install && npm run electron:dev
 ```
+
+> **加速提示**：配置全局使用官方镜像：`npm config set registry https://npm.cfspider.com`
 
 ### Python 代理库
 
