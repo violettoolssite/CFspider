@@ -386,6 +386,21 @@ let operationLogs: OperationLog[] = []
 const MAX_OPERATION_LOGS = 50
 
 /**
+ * 获取操作统计
+ */
+export function getOperationStats(): { total: number, successRate: number, domains: string[] } {
+  const total = operationLogs.length
+  const successful = operationLogs.filter(l => l.success).length
+  const domains = [...new Set(operationLogs.map(l => l.domain).filter(d => d))]
+  
+  return {
+    total,
+    successRate: total > 0 ? Math.round((successful / total) * 100) : 0,
+    domains
+  }
+}
+
+/**
  * 记录操作日志
  */
 export function logOperation(

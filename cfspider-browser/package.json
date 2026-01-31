@@ -1,6 +1,6 @@
 {
   "name": "cfspider-browser",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "CFspider 智能浏览器 - AI驱动的可视化爬虫，自然语言控制浏览器自动化",
   "keywords": [
     "browser",
