@@ -475,8 +475,22 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
     
     # 如果指定了 cf_proxies，自动检测 Workers 类型
     if cf_proxies:
+        workers_mode = None
+        
+        # 支持 WorkersManager 对象
+        if hasattr(cf_proxies, 'url'):
+            workers_mode = getattr(cf_proxies, 'mode', None)
+            if not uuid and hasattr(cf_proxies, 'uuid'):
+                manager_uuid = getattr(cf_proxies, 'uuid', None)
+                if manager_uuid:
+                    uuid = manager_uuid
+            manager_url = getattr(cf_proxies, 'url', None)
+            if not manager_url:
+                raise ValueError("WorkersManager 未成功创建 Workers，请检查 API Token 和 Account ID")
+            cf_proxies = manager_url
+        
         # 检测是否为爬楼梯 Workers（HTTP 代理模式）
-        workers_type = _detect_workers_type(cf_proxies)
+        workers_type = workers_mode if workers_mode in ('http', 'vless') else _detect_workers_type(cf_proxies)
         
         if workers_type == 'http':
             # 使用爬楼梯 Workers HTTP 代理
@@ -604,6 +618,17 @@ def _detect_workers_type(cf_proxies):
         'http': 爬楼梯 Workers（HTTP 代理模式）
         'vless': VLESS Workers
     """
+    # 支持 WorkersManager 对象
+    if hasattr(cf_proxies, 'url'):
+        cf_proxies = getattr(cf_proxies, 'url', None)
+    
+    # 兜底转换为字符串
+    if not isinstance(cf_proxies, str):
+        cf_proxies = str(cf_proxies)
+    
+    if not cf_proxies:
+        return 'vless'
+    
     # 解析地址
     if not cf_proxies.startswith('http'):
         cf_proxies = f'https://{cf_proxies}'
@@ -650,6 +675,17 @@ def _request_http_proxy(method, url, http_proxy,
         其他参数与 request() 相同
     """
     start_time = time.time()
+    
+    # 支持 WorkersManager 对象
+    if hasattr(http_proxy, 'url'):
+        http_proxy = getattr(http_proxy, 'url', None)
+    
+    # 兜底转换为字符串
+    if not isinstance(http_proxy, str):
+        http_proxy = str(http_proxy)
+    
+    if not http_proxy:
+        raise ValueError("cf_proxies 不能为空")
     
     # 解析代理地址
     if not http_proxy.startswith('http'):
