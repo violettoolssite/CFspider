@@ -249,6 +249,14 @@ async def arequest(
     cf_workers: bool = True,
     http2: bool = True,
     token: Optional[str] = None,
+    stealth: bool = False,
+    browser: bool = False,
+    headless: bool = True,
+    wait_until: str = 'load',
+    screenshot: Optional[str] = None,
+    js_eval: Optional[str] = None,
+    uuid: Optional[str] = None,
+    two_proxy: Optional[str] = None,
     **kwargs
 ) -> AsyncCFSpiderResponse:
     """
@@ -273,13 +281,35 @@ async def arequest(
         # 无需 UUID
         response = await cfspider.aget("https://httpbin.org/ip", cf_proxies="https://your-workers.dev")
     """
+    # CloakBrowser 拦截：在线程池中运行同步 Playwright，不阻塞事件循环
+    if stealth or browser:
+        import asyncio
+        import functools
+        from .stealth import _cloak_single_request, _browser_single_request
+        loop = asyncio.get_event_loop()
+        if browser:
+            fn = functools.partial(
+                _browser_single_request, method, url,
+                cf_proxies=cf_proxies, uuid=uuid, two_proxy=two_proxy,
+                headless=headless, humanize=True,
+                wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+                **kwargs
+            )
+        else:
+            fn = functools.partial(
+                _cloak_single_request, method, url,
+                cf_proxies=cf_proxies, uuid=uuid, two_proxy=two_proxy,
+                **kwargs
+            )
+        return await loop.run_in_executor(None, fn)
+
     params = kwargs.pop("params", None)
     headers = kwargs.pop("headers", {})
     data = kwargs.pop("data", None)
     json_data = kwargs.pop("json", None)
     cookies = kwargs.pop("cookies", None)
     timeout = kwargs.pop("timeout", 30)
-    
+
     # 如果没有指定 cf_proxies，直接请求
     if not cf_proxies:
         async with httpx.AsyncClient(http2=http2, timeout=timeout) as client:
@@ -466,37 +496,78 @@ async def astream(
 
 
 # 便捷方法
-async def aget(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def aget(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+               http2: bool = True, stealth: bool = False, browser: bool = False,
+               headless: bool = True, wait_until: str = 'load',
+               screenshot: Optional[str] = None, js_eval: Optional[str] = None,
+               uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 GET 请求"""
-    return await arequest("GET", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("GET", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, browser=browser, headless=headless,
+                          wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+                          uuid=uuid, two_proxy=two_proxy, **kwargs)
 
 
-async def apost(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def apost(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+                http2: bool = True, stealth: bool = False, browser: bool = False,
+                headless: bool = True, wait_until: str = 'load',
+                screenshot: Optional[str] = None, js_eval: Optional[str] = None,
+                uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 POST 请求"""
-    return await arequest("POST", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("POST", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, browser=browser, headless=headless,
+                          wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+                          uuid=uuid, two_proxy=two_proxy, **kwargs)
 
 
-async def aput(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def aput(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+               http2: bool = True, stealth: bool = False, browser: bool = False,
+               headless: bool = True, wait_until: str = 'load',
+               screenshot: Optional[str] = None, js_eval: Optional[str] = None,
+               uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 PUT 请求"""
-    return await arequest("PUT", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("PUT", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, browser=browser, headless=headless,
+                          wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+                          uuid=uuid, two_proxy=two_proxy, **kwargs)
 
 
-async def adelete(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def adelete(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+                  http2: bool = True, stealth: bool = False, browser: bool = False,
+                  headless: bool = True, wait_until: str = 'load',
+                  screenshot: Optional[str] = None, js_eval: Optional[str] = None,
+                  uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 DELETE 请求"""
-    return await arequest("DELETE", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("DELETE", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, browser=browser, headless=headless,
+                          wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+                          uuid=uuid, two_proxy=two_proxy, **kwargs)
 
 
-async def ahead(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def ahead(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+                http2: bool = True, stealth: bool = False,
+                uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 HEAD 请求"""
-    return await arequest("HEAD", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("HEAD", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, uuid=uuid, two_proxy=two_proxy, **kwargs)
 
 
-async def aoptions(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def aoptions(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+                   http2: bool = True, stealth: bool = False,
+                   uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 OPTIONS 请求"""
-    return await arequest("OPTIONS", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("OPTIONS", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, uuid=uuid, two_proxy=two_proxy, **kwargs)
 
 
-async def apatch(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True, http2: bool = True, **kwargs) -> AsyncCFSpiderResponse:
+async def apatch(url: str, cf_proxies: Optional[str] = None, cf_workers: bool = True,
+                 http2: bool = True, stealth: bool = False, browser: bool = False,
+                 headless: bool = True, wait_until: str = 'load',
+                 screenshot: Optional[str] = None, js_eval: Optional[str] = None,
+                 uuid: Optional[str] = None, two_proxy: Optional[str] = None, **kwargs) -> AsyncCFSpiderResponse:
     """异步 PATCH 请求"""
-    return await arequest("PATCH", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2, **kwargs)
+    return await arequest("PATCH", url, cf_proxies=cf_proxies, cf_workers=cf_workers, http2=http2,
+                          stealth=stealth, browser=browser, headless=headless,
+                          wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+                          uuid=uuid, two_proxy=two_proxy, **kwargs)
 

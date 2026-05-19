@@ -3,9 +3,8 @@ CFspider 核心 API 模块
 
 提供同步 HTTP 请求功能，支持：
 - 通过 Cloudflare Workers VLESS 代理请求
-- TLS 指纹模拟 (curl_cffi)
+- CloakBrowser 反检测：stealth=True（HTTP 隐身）/ browser=True（完整 JS 渲染）
 - HTTP/2 支持 (httpx)
-- 隐身模式（完整浏览器请求头）
 - IP 地图可视化
 """
 
@@ -35,22 +34,6 @@ def _get_httpx():
     return _httpx
 
 
-# 延迟导入 curl_cffi，仅在需要 TLS 指纹时使用
-_curl_cffi = None
-
-def _get_curl_cffi():
-    """延迟加载 curl_cffi 模块"""
-    global _curl_cffi
-    if _curl_cffi is None:
-        try:
-            from curl_cffi import requests as curl_requests
-            _curl_cffi = curl_requests
-        except ImportError:
-            raise ImportError(
-                "curl_cffi is required for TLS fingerprint impersonation. "
-                "Install it with: pip install curl_cffi"
-            )
-    return _curl_cffi
 
 
 class CFSpiderResponse:
@@ -379,9 +362,11 @@ class CFSpiderResponse:
         return save_response(self.content, filepath, encoding=encoding)
 
 
-def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=None, 
-             map_output=False, map_file="cfspider_map.html", 
-             stealth=False, stealth_browser='chrome', delay=None,
+def request(method, url, cf_proxies=None, uuid=None, http2=False,
+             map_output=False, map_file="cfspider_map.html",
+             stealth=False,
+             browser=False, headless=True,
+             wait_until='load', screenshot=None, js_eval=None,
              static_ip=False, two_proxy=None, **kwargs):
     """
     发送 HTTP 请求
@@ -412,20 +397,12 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
         
         http2: 是否启用 HTTP/2 协议（默认 False）
         
-        impersonate: TLS 指纹模拟（可选）
-            可选值: chrome131, safari18_0, firefox133, edge101 等
-        
         map_output: 是否生成 IP 地图 HTML 文件（默认 False）
         
         map_file: 地图输出文件名（默认 "cfspider_map.html"）
         
-        stealth: 是否启用隐身模式（默认 False）
-            自动添加 15+ 个完整浏览器请求头
-        
-        stealth_browser: 隐身模式浏览器类型（默认 'chrome'）
-            可选值: chrome, firefox, safari, edge, chrome_mobile
-        
-        delay: 请求前的随机延迟范围（秒），如 (1, 3)
+        stealth: CloakBrowser HTTP 隐身模式（默认 False）
+            真实 TLS 指纹 + 真实 Chrome 146 UA，无 JS 渲染，速度快
         
         **kwargs: 其他参数，与 requests 库完全兼容
             - params: URL 查询参数
@@ -467,16 +444,22 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
     """
     # 移除不支持的旧版参数（保持向后兼容）
     kwargs.pop("token", None)
-    
-    # 应用随机延迟
-    if delay:
-        from .stealth import random_delay
-        random_delay(delay[0], delay[1])
 
-    # 如果启用隐身模式，通过 CloakBrowser 发请求（真实浏览器指纹，放弃手工 headers）
+    # 隐身模式：CloakBrowser context.request（真实 TLS 指纹，无 JS 渲染）
     if stealth:
         from .stealth import _cloak_single_request
         return _cloak_single_request(method, url, cf_proxies=cf_proxies, uuid=uuid, two_proxy=two_proxy, **kwargs)
+
+    # 浏览器模式：CloakBrowser page.goto()（完整 JS 渲染，绕过 CAPTCHA）
+    if browser:
+        from .stealth import _browser_single_request
+        return _browser_single_request(
+            method, url,
+            cf_proxies=cf_proxies, uuid=uuid, two_proxy=two_proxy,
+            headless=headless, humanize=True,
+            wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
+            **kwargs
+        )
 
     # 如果指定了 cf_proxies，自动检测 Workers 类型
     if cf_proxies:
@@ -501,18 +484,16 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
             # 使用爬楼梯 Workers HTTP 代理
             return _request_http_proxy(
                 method, url, cf_proxies,
-                http2=http2, impersonate=impersonate,
+                http2=http2,
                 map_output=map_output, map_file=map_file,
-                stealth=stealth, stealth_browser=stealth_browser,
                 **kwargs
             )
         else:
             # 使用 VLESS Workers 代理
             return _request_vless(
                 method, url, cf_proxies, uuid,
-                http2=http2, impersonate=impersonate,
+                http2=http2,
                 map_output=map_output, map_file=map_file,
-                stealth=stealth, stealth_browser=stealth_browser,
                 static_ip=static_ip, two_proxy=two_proxy,
                 **kwargs
             )
@@ -521,14 +502,6 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
     params = kwargs.pop("params", None)
     headers = kwargs.pop("headers", {})
     
-    # 如果启用隐身模式，添加完整的浏览器请求头
-    if stealth:
-        from .stealth import get_stealth_headers
-        stealth_headers = get_stealth_headers(stealth_browser)
-        final_headers = stealth_headers.copy()
-        final_headers.update(headers)
-        headers = final_headers
-    
     data = kwargs.pop("data", None)
     json_data = kwargs.pop("json", None)
     cookies = kwargs.pop("cookies", None)
@@ -536,25 +509,6 @@ def request(method, url, cf_proxies=None, uuid=None, http2=False, impersonate=No
     
     # 记录请求开始时间
     start_time = time.time()
-    
-    # 如果指定了 impersonate，使用 curl_cffi
-    if impersonate:
-        curl_requests = _get_curl_cffi()
-        response = curl_requests.request(
-            method,
-            url,
-            params=params,
-            headers=headers,
-            data=data,
-            json=json_data,
-            cookies=cookies,
-            timeout=timeout,
-            impersonate=impersonate,
-            **kwargs
-        )
-        resp = CFSpiderResponse(response)
-        _handle_map_output(resp, url, start_time, map_output, map_file)
-        return resp
     
     # 如果启用 HTTP/2，使用 httpx
     if http2:
@@ -664,9 +618,9 @@ def _detect_workers_type(cf_proxies):
 
 
 def _request_http_proxy(method, url, http_proxy,
-                        http2=False, impersonate=None,
+                        http2=False,
                         map_output=False, map_file="cfspider_map.html",
-                        stealth=False, stealth_browser='chrome', **kwargs):
+                        **kwargs):
     """
     使用爬楼梯 Workers HTTP 代理发送请求
     
@@ -704,14 +658,6 @@ def _request_http_proxy(method, url, http_proxy,
     
     # 准备请求头
     headers = kwargs.pop('headers', {})
-    
-    # 如果启用隐身模式，添加完整的浏览器请求头
-    if stealth:
-        from .stealth import get_stealth_headers
-        stealth_headers = get_stealth_headers(stealth_browser)
-        final_headers = stealth_headers.copy()
-        final_headers.update(headers)
-        headers = final_headers
     
     # 准备请求数据
     data = kwargs.pop('data', None)
@@ -850,9 +796,8 @@ def _get_workers_config(cf_proxies):
 
 
 def _request_vless(method, url, cf_proxies, uuid=None,
-                   http2=False, impersonate=None,
+                   http2=False,
                    map_output=False, map_file="cfspider_map.html",
-                   stealth=False, stealth_browser='chrome',
                    static_ip=False, two_proxy=None, **kwargs):
     """
     使用 VLESS 协议发送请求
@@ -962,15 +907,6 @@ def _request_vless(method, url, cf_proxies, uuid=None,
     # 准备请求参数
     params = kwargs.pop("params", None)
     headers = kwargs.pop("headers", {})
-    
-    # 如果启用隐身模式，添加完整的浏览器请求头
-    if stealth:
-        from .stealth import get_stealth_headers
-        stealth_headers = get_stealth_headers(stealth_browser)
-        final_headers = stealth_headers.copy()
-        final_headers.update(headers)
-        headers = final_headers
-    
     data = kwargs.pop("data", None)
     json_data = kwargs.pop("json", None)
     cookies = kwargs.pop("cookies", None)
@@ -980,26 +916,6 @@ def _request_vless(method, url, cf_proxies, uuid=None,
         "http": local_proxy,
         "https": local_proxy
     }
-    
-    # 如果指定了 impersonate，使用 curl_cffi
-    if impersonate:
-        curl_requests = _get_curl_cffi()
-        response = curl_requests.request(
-                method,
-                url,
-                params=params,
-                headers=headers,
-                data=data,
-                json=json_data,
-                cookies=cookies,
-            timeout=timeout,
-            impersonate=impersonate,
-            proxies=proxies,
-                **kwargs
-            )
-        resp = CFSpiderResponse(response)
-        _handle_map_output(resp, url, start_time, map_output, map_file)
-        return resp
     
     # 如果启用 HTTP/2，使用 httpx
     if http2:
@@ -1061,141 +977,101 @@ def stop_vless_proxies():
     _vless_proxy_cache.clear()
 
 
-def get(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
+def get(url, cf_proxies=None, uuid=None, http2=False,
         map_output=False, map_file="cfspider_map.html",
-        stealth=False, stealth_browser='chrome', delay=None, 
+        stealth=False, browser=False, headless=True,
+        wait_until='load', screenshot=None, js_eval=None,
         static_ip=False, two_proxy=None, **kwargs):
-    """
-    发送 GET 请求 / Send GET request
-    
+    """发送 GET 请求
+
     Args:
-        url: 目标 URL（必须包含协议，如 https://）
-        
+        url: 目标 URL
         cf_proxies: CFspider Workers 地址（可选）
-            自动检测 Workers 类型：
-            - 爬楼梯 Workers: HTTP 代理模式，无敏感特征，适合爬虫
-            - VLESS Workers: 隐藏 Cloudflare 特征，适合代理软件
-        
-        uuid: VLESS UUID（可选，仅 VLESS 模式）
-            不填写会自动从 Workers 获取
-        
-        static_ip: 是否使用固定 IP（默认 False）
-            - False: 每次请求获取新的出口 IP（适合大规模采集）
-            - True: 保持使用同一个 IP（适合需要会话一致性的场景）
-        
-        two_proxy: 第二层代理（可选，仅 VLESS 模式）
-            格式: "host:port:user:pass" 或 "host:port"
-            流程: 本地 → Workers (VLESS) → 第二层代理 → 目标网站
-        
-        http2: 是否启用 HTTP/2 协议（默认 False）
-        
-        impersonate: TLS 指纹模拟（可选）
-            可选值: chrome131, safari18_0, firefox133, edge101 等
-        
-        map_output: 是否生成 IP 地图 HTML 文件（默认 False）
-        
-        map_file: 地图输出文件名（默认 "cfspider_map.html"）
-        
-        stealth: 是否启用隐身模式（默认 False）
-        
-        stealth_browser: 隐身模式浏览器类型（默认 'chrome'）
-        
-        delay: 请求前随机延迟范围（秒），如 (1, 3)
-        
-        **kwargs: 其他参数，与 requests 库完全兼容
-    
-    Returns:
-        CFSpiderResponse: 响应对象
-    
-    Example:
-        >>> # 使用爬楼梯 Workers（自动检测，HTTP 代理模式）
-        >>> response = cfspider.get(
-        ...     "https://httpbin.org/ip",
-        ...     cf_proxies="https://my-proxy.workers.dev"
-        ... )
-        >>> 
-        >>> # 使用 VLESS Workers（自动检测）
-        >>> response = cfspider.get(
-        ...     "https://httpbin.org/ip",
-        ...     cf_proxies="https://cfspider.workers.dev"
-        ... )
+        uuid: VLESS UUID（可选）
+        stealth: CloakBrowser HTTP 隐身（True = 真实 TLS + Chrome 146 UA）
+        browser: CloakBrowser 完整渲染（True = 执行 JS，可绕过 CAPTCHA）
+        headless: 浏览器是否无头（默认 True）
+        wait_until: 页面等待条件 load/domcontentloaded/networkidle
+        screenshot: 截图保存路径（可选）
+        js_eval: 页面加载后执行的 JS，结果存入 response.js_result
+        static_ip: 是否固定 IP（默认 False）
+        two_proxy: 第二层代理 host:port:user:pass
+        **kwargs: 其他 requests 兼容参数
     """
-    return request("GET", url, cf_proxies=cf_proxies, uuid=uuid, 
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+    return request("GET", url, cf_proxies=cf_proxies, uuid=uuid,
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, browser=browser, headless=headless,
+                   wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
                    static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 
-def post(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
+def post(url, cf_proxies=None, uuid=None, http2=False,
          map_output=False, map_file="cfspider_map.html",
-         stealth=False, stealth_browser='chrome', delay=None,
+         stealth=False, browser=False, headless=True,
+         wait_until='load', screenshot=None, js_eval=None,
          static_ip=False, two_proxy=None, **kwargs):
-    """发送 POST 请求 / Send POST request"""
+    """发送 POST 请求"""
     return request("POST", url, cf_proxies=cf_proxies, uuid=uuid,
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, browser=browser, headless=headless,
+                   wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
                    static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 
-def put(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
+def put(url, cf_proxies=None, uuid=None, http2=False,
         map_output=False, map_file="cfspider_map.html",
-        stealth=False, stealth_browser='chrome', delay=None,
+        stealth=False, browser=False, headless=True,
+        wait_until='load', screenshot=None, js_eval=None,
         static_ip=False, two_proxy=None, **kwargs):
-    """发送 PUT 请求 / Send PUT request"""
+    """发送 PUT 请求"""
     return request("PUT", url, cf_proxies=cf_proxies, uuid=uuid,
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, browser=browser, headless=headless,
+                   wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
                    static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 
-def delete(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
-            map_output=False, map_file="cfspider_map.html",
-           stealth=False, stealth_browser='chrome', delay=None,
+def delete(url, cf_proxies=None, uuid=None, http2=False,
+           map_output=False, map_file="cfspider_map.html",
+           stealth=False, browser=False, headless=True,
+           wait_until='load', screenshot=None, js_eval=None,
            static_ip=False, two_proxy=None, **kwargs):
-    """发送 DELETE 请求 / Send DELETE request"""
+    """发送 DELETE 请求"""
     return request("DELETE", url, cf_proxies=cf_proxies, uuid=uuid,
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, browser=browser, headless=headless,
+                   wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
                    static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 
-def head(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
+def head(url, cf_proxies=None, uuid=None, http2=False,
          map_output=False, map_file="cfspider_map.html",
-         stealth=False, stealth_browser='chrome', delay=None,
-         static_ip=False, two_proxy=None, **kwargs):
-    """发送 HEAD 请求 / Send HEAD request"""
+         stealth=False, static_ip=False, two_proxy=None, **kwargs):
+    """发送 HEAD 请求"""
     return request("HEAD", url, cf_proxies=cf_proxies, uuid=uuid,
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   static_ip=static_ip, two_proxy=two_proxy, **kwargs)
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 
-def options(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
-          map_output=False, map_file="cfspider_map.html",
-            stealth=False, stealth_browser='chrome', delay=None,
-            static_ip=False, two_proxy=None, **kwargs):
-    """发送 OPTIONS 请求 / Send OPTIONS request"""
+def options(url, cf_proxies=None, uuid=None, http2=False,
+            map_output=False, map_file="cfspider_map.html",
+            stealth=False, static_ip=False, two_proxy=None, **kwargs):
+    """发送 OPTIONS 请求"""
     return request("OPTIONS", url, cf_proxies=cf_proxies, uuid=uuid,
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
-                   static_ip=static_ip, two_proxy=two_proxy, **kwargs)
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 
-def patch(url, cf_proxies=None, uuid=None, http2=False, impersonate=None,
+def patch(url, cf_proxies=None, uuid=None, http2=False,
           map_output=False, map_file="cfspider_map.html",
-          stealth=False, stealth_browser='chrome', delay=None,
+          stealth=False, browser=False, headless=True,
+          wait_until='load', screenshot=None, js_eval=None,
           static_ip=False, two_proxy=None, **kwargs):
-    """发送 PATCH 请求 / Send PATCH request"""
+    """发送 PATCH 请求"""
     return request("PATCH", url, cf_proxies=cf_proxies, uuid=uuid,
-                   http2=http2, impersonate=impersonate,
-                   map_output=map_output, map_file=map_file,
-                   stealth=stealth, stealth_browser=stealth_browser, delay=delay,
+                   http2=http2, map_output=map_output, map_file=map_file,
+                   stealth=stealth, browser=browser, headless=headless,
+                   wait_until=wait_until, screenshot=screenshot, js_eval=js_eval,
                    static_ip=static_ip, two_proxy=two_proxy, **kwargs)
 
 

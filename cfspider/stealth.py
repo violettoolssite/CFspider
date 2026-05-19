@@ -38,6 +38,31 @@ import time
 from typing import Optional, Dict, List, Tuple, Any
 from urllib.parse import urlparse, urlencode, urlunparse
 
+# 真实 Chrome 版本字符串池 (major.0.build.patch)
+_CHROME_REAL_VERSIONS = [
+    "136.0.7103.92",  "136.0.7103.114", "136.0.7103.149",
+    "137.0.7151.55",  "137.0.7151.68",  "137.0.7151.103",
+    "138.0.7204.45",  "138.0.7204.74",  "138.0.7204.100",
+    "139.0.7258.40",  "139.0.7258.65",  "139.0.7258.89",
+    "140.0.7294.67",  "140.0.7294.86",  "140.0.7294.127",
+    "141.0.7360.44",  "141.0.7360.60",  "141.0.7360.79",
+    "142.0.7420.30",  "142.0.7420.44",  "142.0.7420.67",
+    "143.0.7476.38",  "143.0.7476.53",  "143.0.7476.74",
+    "144.0.7536.33",  "144.0.7536.48",  "144.0.7536.79",
+    "145.0.7598.26",  "145.0.7598.39",  "145.0.7598.61",
+    "146.0.7652.46",  "146.0.7652.60",  "146.0.7652.77",
+]
+
+
+def _random_chrome_ua() -> str:
+    """Generate a realistic Chrome User-Agent string with real build numbers"""
+    ver = random.choice(_CHROME_REAL_VERSIONS)
+    return (
+        f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        f"AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/{ver} Safari/537.36"
+    )
+
 # CloakBrowser 源码级反检测
 CLOAKBROWSER_AVAILABLE = False
 try:
@@ -353,7 +378,10 @@ class StealthSession:
             self._playwright = sync_playwright().start()
             self._pw_browser = self._playwright.chromium.launch(headless=True)
 
-        ctx_opts = {"ignore_https_errors": True}
+        ctx_opts = {
+            "ignore_https_errors": True,
+            "user_agent": _random_chrome_ua(),
+        }
         if proxy_url and not CLOAKBROWSER_AVAILABLE:
             ctx_opts["proxy"] = {"server": proxy_url}
         self._pw_context = self._pw_browser.new_context(**ctx_opts)
@@ -465,6 +493,103 @@ def _cloak_single_request(method: str, url: str, cf_proxies=None, uuid=None, two
     """Single-shot CloakBrowser request (used by api.py stealth=True)"""
     with StealthSession(cf_proxies=cf_proxies, uuid=uuid, two_proxy=two_proxy) as sess:
         return getattr(sess, method.lower())(url, **kwargs)
+
+
+class _BrowserPageResponse:
+    """Full-page CloakBrowser render result, compatible with CFSpiderResponse inner interface"""
+    def __init__(self, html: str, url: str, status: int = 200, js_result=None):
+        self._html = html
+        self._url = url
+        self._status = status
+        self.js_result = js_result
+
+    @property
+    def text(self): return self._html
+    @property
+    def content(self): return self._html.encode('utf-8', errors='replace')
+    @property
+    def status_code(self): return self._status
+    @property
+    def headers(self): return {}
+    @property
+    def url(self): return self._url
+    @property
+    def encoding(self): return 'utf-8'
+    @encoding.setter
+    def encoding(self, v): pass
+    @property
+    def cookies(self): return {}
+    def json(self, **kw):
+        import json as _j
+        return _j.loads(self._html)
+    def raise_for_status(self): pass
+    def __repr__(self): return f"<BrowserResponse [{self._status}] {self._url}>"
+
+
+def _browser_single_request(
+    method: str,
+    url: str,
+    cf_proxies=None,
+    uuid=None,
+    two_proxy=None,
+    headless: bool = True,
+    humanize: bool = True,
+    wait_until: str = 'load',
+    screenshot: str = None,
+    js_eval: str = None,
+    **kwargs
+) -> Any:
+    """Full CloakBrowser page.goto() render — executes JS, bypasses bot challenges"""
+    proxy_url = StealthSession(cf_proxies=cf_proxies, uuid=uuid, two_proxy=two_proxy)._resolve_proxy()
+
+    launch_opts = {"headless": headless, "humanize": humanize}
+    if proxy_url and CLOAKBROWSER_AVAILABLE:
+        launch_opts["proxy"] = {"server": proxy_url}
+
+    if CLOAKBROWSER_AVAILABLE:
+        browser_obj = _cloak_launch_sync(**launch_opts)
+        _pw = None
+    else:
+        from playwright.sync_api import sync_playwright
+        _pw = sync_playwright().start()
+        browser_obj = _pw.chromium.launch(headless=headless)
+
+    try:
+        ctx_opts = {
+            "ignore_https_errors": True,
+            "user_agent": _random_chrome_ua(),
+        }
+        if proxy_url and not CLOAKBROWSER_AVAILABLE:
+            ctx_opts["proxy"] = {"server": proxy_url}
+
+        context = browser_obj.new_context(**ctx_opts)
+        page = context.new_page()
+
+        headers = kwargs.pop("headers", {})
+        if headers:
+            page.set_extra_http_headers(headers)
+
+        page.goto(url, wait_until=wait_until, timeout=60000)
+
+        if screenshot:
+            page.screenshot(path=screenshot)
+
+        js_result = page.evaluate(js_eval) if js_eval else None
+        html = page.content()
+        final_url = page.url
+
+        from .api import CFSpiderResponse
+        raw = _BrowserPageResponse(html, final_url, 200, js_result)
+        result = CFSpiderResponse(raw)
+        if js_result is not None:
+            result.js_result = js_result
+        return result
+    finally:
+        try: browser_obj.close()
+        except: pass
+        if _pw:
+            try: _pw.stop()
+            except: pass
 
 
 # 支持的浏览器列表
