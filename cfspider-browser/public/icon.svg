@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="100" fill="#0f0f23"/>
+  <circle cx="256" cy="200" r="80" fill="none" stroke="#00ff88" stroke-width="20"/>
+  <path d="M180 280 L140 380 M332 280 L372 380 M256 280 L256 400" stroke="#00ff88" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="140" cy="400" r="20" fill="#00ff88"/>
+  <circle cx="372" cy="400" r="20" fill="#00ff88"/>
+  <circle cx="256" cy="420" r="20" fill="#00ff88"/>
+  <text x="256" y="480" text-anchor="middle" fill="#00ff88" font-family="Arial" font-size="60" font-weight="bold">CFSpider</text>
+</svg>
