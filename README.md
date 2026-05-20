@@ -26,10 +26,13 @@
 > 注册即可领取 5GB 免费流量，支持全平台客户端，稳定快速。邀请码：**`aVDxxRS0`**
 >
 > **如果你需要爬虫代理 IP，推荐以下服务：**
-> - **Thordata**：[https://thordata.com/](https://thordata.com/) — 住宅代理 IP，支持多语言 SDK 集成，高匿名稳定,输入专属优惠码CFspider还可获得10%的优惠（[查看集成方案](#代理-ip-集成方案)）
+> - **Thordata**：[https://thordata.com/](https://thordata.com/) — 住宅代理 IP，支持多语言 SDK 集成，高匿名稳定（[查看集成方案](#代理-ip-集成方案)）
+>   - 💰 **专属优惠码 `CFspider`，输入可获 10% 折扣**
 > - **Cliproxy**：[https://dash.cliproxy.com/](https://dash.cliproxy.com/) — 爬虫 HTTP/SOCKS5，高速稳定
 > - **1024proxy**：[https://1024proxy.com/](https://1024proxy.com/) — 住宅 IP，低至 $0.49/GB
 > - **Novproxy**：[https://novproxy.com/](https://novproxy.com/) — 1 亿+ 住宅 IP，90 国家，$0.5/GB
+>
+> ![Thordata 专属优惠码](专属优惠码.png)
 
 ---
 
@@ -349,8 +352,6 @@ r.js_result     # js_eval 执行结果（browser=True 时）
 ## 代理 IP 集成方案
 
 将第三方代理 IP 服务无缝集成至 CFspider，结合 CloakBrowser 反检测能力，实现高匿名、高成功率的自动化数据采集。
-
-> 🎁 **Thordata 专属优惠码：CFspider** — 输入可获 10% 折扣
 
 ![Thordata 代理集成方案](IP质量检测.png)
 
