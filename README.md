@@ -25,9 +25,12 @@
 > **如果你需要稳定翻墙，我们强烈推荐 [VPN Cheap](https://siusn-sisjxl.top/#/register?code=aVDxxRS0)**  
 > 填写我的邀请码可获免费 5GB/月流量，支持全平台客户端，稳定快速。[👉 点击注册](https://siusn-sisjxl.top/#/register?code=aVDxxRS0) 邀请码：**`aVDxxRS0`**
 >
-> **如果你需要爬虫代理 IP，推荐以下服务：**
-> - **Thordata**：[https://thordata.com/](https://thordata.com/) — 住宅代理 IP，支持多语言 SDK 集成，高匿名稳定（[查看集成方案](#代理-ip-集成方案)）
->   - 💰 **专属优惠码 `CFspider`，输入可获 10% 折扣**，[👉 点击注册](https://dashboard.thordata.com/zh/register?invitation_code=CSSNEZF2)
+> **如果你需要最强的数据抓取代理，我们强烈推荐：**
+> - ⚡ **[Thordata 全球住宅代理](https://thordata.com/)** — **CFspider 绝佳搭档**
+>   - **终极防封方案**：拥有 **1亿+** 纯净真人真实 ISP 住宅 IP（覆盖全球190+国家/地区），结合 CFspider 的 **CloakBrowser 真实 TLS 指纹伪装**，轻松绕过 Cloudflare 5s 盾、人机验证及各大顶级反爬机制，实现真正的“无痕隐形采集”。
+>   - **极致稳定高并发**：高达 **99.9%** 连通率，无惧高频并发请求，毫秒级响应。无论是大规模电商数据抓取、SEO 监控，还是多账号防关联，都能完美胜任。
+>   - 💰 **专属福利**：结账时输入优惠码 **`CFspider`** 即可享受 **10% 折扣**！
+>   - [👉 **点击立刻注册，打造你的无敌爬虫矩阵**](https://dashboard.thordata.com/zh/register?invitation_code=CSSNEZF2)（[查看 CFspider 详细代码集成方案](#代理-ip-集成方案)）
 > - **Cliproxy**：[https://dash.cliproxy.com/](https://dash.cliproxy.com/) — 爬虫 HTTP/SOCKS5，高速稳定
 > - **1024proxy**：[https://1024proxy.com/](https://1024proxy.com/) — 住宅 IP，低至 $0.49/GB
 > - **Novproxy**：[https://novproxy.com/](https://novproxy.com/) — 1 亿+ 住宅 IP，90 国家，$0.5/GB
