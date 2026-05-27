@@ -42,6 +42,13 @@
 > - **Cliproxy**：[https://dash.cliproxy.com/](https://dash.cliproxy.com/) — 爬虫 HTTP/SOCKS5，高速稳定
 > - **1024proxy**：[https://1024proxy.com/](https://1024proxy.com/) — 住宅 IP，低至 $0.49/GB
 > - **Novproxy**：[https://novproxy.com/](https://novproxy.com/) — 1 亿+ 住宅 IP，90 国家，$0.5/GB
+> - **[BirdProxies](https://birdproxies.com/@violetto)** — 全球住宅代理 IP 服务商
+>   - **静态住宅 IP**：长期固定 IP 地址，适合账号养号、长期登录、多账号防关联、社媒运营等需要 IP 稳定不变的场景
+>   - **动态住宅 IP**：每次请求自动轮换真实住宅 IP，适合大规模数据采集、高频爬取、价格监控等需要大量不同 IP 的场景
+>   - **全球覆盖**：支持多国家/地区 IP 选择，精准模拟真实用户地理位置，轻松访问地域限制内容
+>   - **高匿名真人 IP**：真人住宅 IP 地址，非机房 IP，不易被目标网站识别和封禁，采集成功率极高
+>   - 💰 **专属优惠**：使用我的链接注册享 **15% 折扣**！
+>   - [👉 **点击注册 BirdProxies，享受 15% 优惠**](https://birdproxies.com/@violetto)
 >
 > ![Thordata 专属优惠码](专属优惠码.png)
 
