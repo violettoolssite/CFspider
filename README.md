@@ -49,6 +49,8 @@
 >   - **高匿名真人 IP**：真人住宅 IP 地址，非机房 IP，不易被目标网站识别和封禁，采集成功率极高
 >   - 💰 **专属优惠**：使用我的链接注册享 **15% 折扣**！
 >   - [👉 **点击注册 BirdProxies，享受 15% 优惠**](https://birdproxies.com/@violetto)
+>
+> ![BirdProxies 代理 IP](hengfu.png)
 
 ---
 
